@@ -125,9 +125,32 @@ V8  weft_splat8 (Builder* b, int bits) { return inst(b, SPLAT,8 ,splat8 , .imm=b
 V16 weft_splat16(Builder* b, int bits) { return inst(b, SPLAT,16,splat16, .imm=bits); }
 V32 weft_splat32(Builder* b, int bits) { return inst(b, SPLAT,32,splat32, .imm=bits); }
 
+stage(load8) {
+    int8_t* r = R;
+    tail ? memcpy(r, (const int8_t*)ptr[I->imm] + off, 1*tail)
+         : memcpy(r, (const int8_t*)ptr[I->imm] + off, 1*N);
+    next(r+N);
+}
+stage(load16) {
+    int16_t* r = R;
+    tail ? memcpy(r, (const int16_t*)ptr[I->imm] + off, 2*tail)
+         : memcpy(r, (const int16_t*)ptr[I->imm] + off, 2*N);
+    next(r+N);
+}
+stage(load32) {
+    int32_t* r = R;
+    tail ? memcpy(r, (const int32_t*)ptr[I->imm] + off, 4*tail)
+         : memcpy(r, (const int32_t*)ptr[I->imm] + off, 4*N);
+    next(r+N);
+}
+
+V8  weft_load8 (Builder* b, int ptr) { return inst(b, LOAD,8 ,load8 , .imm=ptr); }
+V16 weft_load16(Builder* b, int ptr) { return inst(b, LOAD,16,load16, .imm=ptr); }
+V32 weft_load32(Builder* b, int ptr) { return inst(b, LOAD,32,load32, .imm=ptr); }
+
 stage(store8) {
-    tail ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), tail)
-         : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), N);
+    tail ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*tail)
+         : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*N);
     next(R);
 }
 stage(store16) {
@@ -144,3 +167,4 @@ stage(store32) {
 void weft_store8 (Builder* b, int ptr, V8  x) { inst(b, STORE,0,store8 , .x=x.id, .imm=ptr); }
 void weft_store16(Builder* b, int ptr, V16 x) { inst(b, STORE,0,store16, .x=x.id, .imm=ptr); }
 void weft_store32(Builder* b, int ptr, V32 x) { inst(b, STORE,0,store32, .x=x.id, .imm=ptr); }
+
