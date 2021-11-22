@@ -6,7 +6,7 @@
 //   2) define your program using the weft_V{8,16,32} types and the many weft_Builder functions;
 //   3) pass ownership of your weft_Builder to weft_compile() to create an optimized weft_Program;
 //   4) call weft_run() to execute n independent instances of your weft_Program;
-//   5) free your weft_Program with weft_drop().
+//   5) free() your weft_Program.
 //
 // The weft_V{8,16,32} value types represent an unspecified number of independent 8-, 16-, or
 // 32-bit lanes.  These types distinguish only the bit width of the values, leaving those bits'
@@ -24,7 +24,6 @@ typedef struct weft_Program weft_Program;
 weft_Builder* weft_builder(void);
 weft_Program* weft_compile(weft_Builder*);
 void          weft_run    (const weft_Program*, int n, void* const ptr[]);
-void          weft_drop   (weft_Program*);
 
 typedef struct { int id; } weft_V8;
 typedef struct { int id; } weft_V16;
