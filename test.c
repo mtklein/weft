@@ -85,6 +85,64 @@ static void test_memset32() {
     free(p);
 }
 
+static void test_memset_uniform8() {
+    Program* p = NULL;
+    {
+        Builder* b = weft_builder();
+        V8 x = weft_uniform8(b, 1);
+        weft_store8(b,0,x);
+        p = weft_compile(b);
+    }
+
+    int8_t uni = 0x42;
+    int8_t buf[31] = {0};
+    weft_run(p, len(buf), (void*[]){buf, &uni});
+
+    for (int i = 0; i < len(buf); i++) {
+        assert(buf[i] == 0x42);
+    }
+
+    free(p);
+}
+static void test_memset_uniform16() {
+    Program* p = NULL;
+    {
+        Builder* b = weft_builder();
+        V16 x = weft_uniform16(b, 1);
+        weft_store16(b,0,x);
+        p = weft_compile(b);
+    }
+
+    int16_t uni = 0x4243;
+    int16_t buf[31] = {0};
+    weft_run(p, len(buf), (void*[]){buf,&uni});
+
+    for (int i = 0; i < len(buf); i++) {
+        assert(buf[i] == 0x4243);
+    }
+
+    free(p);
+}
+static void test_memset_uniform32() {
+    Program* p = NULL;
+    {
+        Builder* b = weft_builder();
+        V32 x = weft_uniform32(b, 1);
+        weft_store32(b,0,x);
+        p = weft_compile(b);
+    }
+
+    int32_t uni = 0x42431701;
+    int32_t buf[31] = {0};
+    weft_run(p, len(buf), (void*[]){buf, &uni});
+
+    for (int i = 0; i < len(buf); i++) {
+        assert(buf[i] == 0x42431701);
+    }
+
+    free(p);
+}
+
 static void test_memcpy8() {
     Program* p = NULL;
     {
@@ -158,6 +216,9 @@ int main(void) {
     test_memset8();
     test_memset16();
     test_memset32();
+    test_memset_uniform8();
+    test_memset_uniform16();
+    test_memset_uniform32();
     test_memcpy8();
     test_memcpy16();
     test_memcpy32();

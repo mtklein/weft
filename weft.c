@@ -125,6 +125,14 @@ V8  weft_splat8 (Builder* b, int bits) { return inst(b, SPLAT,8 ,splat8 , .imm=b
 V16 weft_splat16(Builder* b, int bits) { return inst(b, SPLAT,16,splat16, .imm=bits); }
 V32 weft_splat32(Builder* b, int bits) { return inst(b, SPLAT,32,splat32, .imm=bits); }
 
+stage(uniform8)  { int8_t*  r = R; each *r++ = *(const int8_t*) ptr[I->imm]; next(r); }
+stage(uniform16) { int16_t* r = R; each *r++ = *(const int16_t*)ptr[I->imm]; next(r); }
+stage(uniform32) { int32_t* r = R; each *r++ = *(const int32_t*)ptr[I->imm]; next(r); }
+
+V8  weft_uniform8 (Builder* b, int ptr) { return inst(b, UNIFORM,8 ,uniform8 , .imm=ptr); }
+V16 weft_uniform16(Builder* b, int ptr) { return inst(b, UNIFORM,16,uniform16, .imm=ptr); }
+V32 weft_uniform32(Builder* b, int ptr) { return inst(b, UNIFORM,32,uniform32, .imm=ptr); }
+
 stage(load8) {
     int8_t* r = R;
     tail ? memcpy(r, (const int8_t*)ptr[I->imm] + off, 1*tail)
