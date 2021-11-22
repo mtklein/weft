@@ -210,6 +210,39 @@ static void test_memcpy32() {
     free(p);
 }
 
+static void test_arithmetic() {
+    Program* p = NULL;
+    {
+        Builder* b = weft_builder();
+        V32 one = weft_splat32(b, 0x3f800000);
+
+        V32 x = weft_load32(b,1);
+        x = weft_add_f32(b,x,one);
+        x = weft_sub_f32(b,x,one);
+        x = weft_div_f32(b,x,one);
+
+        x = weft_mul_f32(b,x,x);
+        x = weft_sqrt_f32(b,x);
+
+        weft_store32(b,0,x);
+        p = weft_compile(b);
+    }
+
+    float dst[31] = {0},
+          src[len(dst)];
+    for (int i = 0; i < len(dst); i++) {
+        src[i] = (float)i;
+    }
+    weft_run(p, len(dst), (void*[]){dst,src});
+
+    for (int i = 0; i < len(dst); i++) {
+        assert(dst[i] <= src[i] &&
+               dst[i] >= src[i]);
+    }
+
+    free(p);
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -222,5 +255,6 @@ int main(void) {
     test_memcpy8();
     test_memcpy16();
     test_memcpy32();
+    test_arithmetic();
     return 0;
 }

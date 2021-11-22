@@ -30,10 +30,11 @@ static bool mode(const char* mode, const char* cc, const char* cflags) {
 }
 
 int main(void) {
-    return mode("opt", "clang"
-                      , "-g -O2 -Xclang -nostdsysteminc -Weverything -Werror")
+    return 1
         && mode("asan", "clang -fsanitize=address,integer,undefined -fno-sanitize-recover=all"
                       , "-g -O0 -Xclang -nostdsysteminc -Weverything -Werror")
+        && mode("opt", "clang"
+                      , "-g -O2 -Xclang -nostdsysteminc -Weverything -Werror")
         && call("git add -u")
         ? 0 : 1;
 }
