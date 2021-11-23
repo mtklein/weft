@@ -1,4 +1,5 @@
 #include "weft.h"
+#include <assert.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -6,6 +7,10 @@
 #include <string.h>
 
 #define N 8
+
+#if !defined(__has_attribute)
+    #define  __has_attribute(x) 0
+#endif
 
 typedef struct { int id; } V0;
 typedef weft_V8            V8;
@@ -30,9 +35,10 @@ typedef struct {
 } BInst;
 
 typedef struct weft_Builder {
-    BInst* inst;
-    int    insts;
-    int    unused;
+    BInst                 *inst;  // len is insts, cap grows by powers of 2
+    struct {int hash,id;} *cse;   // len is insts, cap is cse_cap
+    int                    insts;
+    int                    cse_cap;
 } Builder;
 
 typedef struct weft_Program {
@@ -43,18 +49,87 @@ typedef struct weft_Program {
 
 
 Builder* weft_builder(void) {
-    Builder* b = malloc(sizeof(*b));
-    b->inst  = NULL;
-    b->insts = 0;
+    Builder* b = calloc(1, sizeof(*b));
     return b;
 }
 
+#if __has_attribute(no_sanitize)
+    __attribute__((no_sanitize("unsigned-integer-overflow")))
+#endif
+static uint32_t fnv1a(const void* vp, size_t len) {
+    uint32_t hash = 0x811c9dc5;
+    for (const uint8_t* p = vp; len --> 0;) {
+        hash ^= *p++;
+        hash *= 0x01000193;
+    }
+    return hash;
+}
+
+static int lookup(Builder* b, int hash, const BInst* inst) {
+    hash = hash ? hash : 1;
+
+    int ix = hash & (b->cse_cap-1);
+    for (int i = 0; i < b->cse_cap; i++) {
+        if (b->cse[ix].hash == hash && !memcmp(inst, b->inst + b->cse[ix].id-1, sizeof(*inst))) {
+            return b->cse[ix].id;
+        }
+        if (b->cse[ix].hash == 0) {
+            break;
+        }
+        ix = (ix+1) & (b->cse_cap-1);
+    }
+    return 0;
+}
+
+static void just_insert(Builder* b, int hash, int id) {
+    assert(b->insts <= b->cse_cap);
+    hash = hash ? hash : 1;
+
+    int ix = hash & (b->cse_cap-1);
+    for (int i = 0; i < b->cse_cap; i++) {
+        if (b->cse[ix].hash == 0) {
+            b->cse[ix].hash = hash;
+            b->cse[ix].id   = id;
+            return;
+        }
+        ix = (ix+1) & (b->cse_cap-1);
+    }
+    assert(false);
+}
+
+static void insert(Builder* b, int hash, int id) {
+    if (b->insts > (b->cse_cap*3)/4) {
+        Builder grown = *b;
+        grown.cse_cap = b->cse_cap ? b->cse_cap*2 : 1;
+        grown.cse = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
+
+        for (int ix = 0; ix < b->cse_cap; ix++) {
+            if (b->cse[ix].hash) {
+                just_insert(&grown, b->cse[ix].hash, b->cse[ix].id);
+            }
+        }
+
+        free(b->cse);
+        *b = grown;
+    }
+    just_insert(b,hash,id);
+}
+
 static int inst_(Builder* b, BInst inst) {
+    int hash = (int)fnv1a(&inst, sizeof(inst));
+
+    for (int id = lookup(b, hash, &inst); id;) {
+        return id;
+    }
+
     if ((b->insts & (b->insts-1)) == 0) {
         b->inst = realloc(b->inst, (size_t)(b->insts ? 2*b->insts : 1) * sizeof(*b->inst));
     }
-    b->inst[b->insts++] = inst;
-    return b->insts;  // BInst IDs are 1-indexed.
+
+    int id = ++b->insts;  // BInst IDs are 1-indexed;
+    b->inst[id-1] = inst;
+    insert(b, hash, id);
+    return id;
 }
 #define inst(b,kind,bits,fn,...) (V##bits){inst_(b, (BInst){kind,bits/8,fn, __VA_ARGS__})}
 
@@ -93,6 +168,7 @@ Program* weft_compile(Builder* b) {
     }
 
     free(b->inst);
+    free(b->cse);
     free(b);
 
     return p;

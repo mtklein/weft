@@ -4,6 +4,9 @@
 #include <stdlib.h>
 
 #define len(arr) (int)(sizeof(arr) / sizeof(*arr))
+#define iota {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30}
+
+#define assert_eq(x,y) assert((x) <= (y) && (y) <= (x))
 
 typedef weft_Builder Builder;
 typedef weft_Program Program;
@@ -43,7 +46,7 @@ static void test_memset8() {
     weft_run(p, len(buf), (void*[]){buf});
 
     for (int i = 0; i < len(buf); i++) {
-        assert(buf[i] == 0x42);
+        assert_eq(buf[i], 0x42);
     }
 
     free(p);
@@ -61,7 +64,7 @@ static void test_memset16() {
     weft_run(p, len(buf), (void*[]){buf});
 
     for (int i = 0; i < len(buf); i++) {
-        assert(buf[i] == 0x4243);
+        assert_eq(buf[i], 0x4243);
     }
 
     free(p);
@@ -79,7 +82,7 @@ static void test_memset32() {
     weft_run(p, len(buf), (void*[]){buf});
 
     for (int i = 0; i < len(buf); i++) {
-        assert(buf[i] == 0x42431701);
+        assert_eq(buf[i], 0x42431701);
     }
 
     free(p);
@@ -99,7 +102,7 @@ static void test_memset_uniform8() {
     weft_run(p, len(buf), (void*[]){buf, &uni});
 
     for (int i = 0; i < len(buf); i++) {
-        assert(buf[i] == 0x42);
+        assert_eq(buf[i], 0x42);
     }
 
     free(p);
@@ -118,7 +121,7 @@ static void test_memset_uniform16() {
     weft_run(p, len(buf), (void*[]){buf,&uni});
 
     for (int i = 0; i < len(buf); i++) {
-        assert(buf[i] == 0x4243);
+        assert_eq(buf[i], 0x4243);
     }
 
     free(p);
@@ -137,7 +140,7 @@ static void test_memset_uniform32() {
     weft_run(p, len(buf), (void*[]){buf, &uni});
 
     for (int i = 0; i < len(buf); i++) {
-        assert(buf[i] == 0x42431701);
+        assert_eq(buf[i], 0x42431701);
     }
 
     free(p);
@@ -160,7 +163,7 @@ static void test_memcpy8() {
     weft_run(p, len(dst), (void*[]){dst,src});
 
     for (int i = 0; i < len(dst); i++) {
-        assert(dst[i] == src[i]);
+        assert_eq(dst[i], src[i]);
     }
 
     free(p);
@@ -175,14 +178,11 @@ static void test_memcpy16() {
     }
 
     int16_t dst[31] = {0};
-    int16_t src[len(dst)];
-    for (int i = 0; i < len(dst); i++) {
-        src[i] = (int16_t)i;
-    }
+    int16_t src[31] = iota;
     weft_run(p, len(dst), (void*[]){dst,src});
 
     for (int i = 0; i < len(dst); i++) {
-        assert(dst[i] == src[i]);
+        assert_eq(dst[i], src[i]);
     }
 
     free(p);
@@ -197,14 +197,11 @@ static void test_memcpy32() {
     }
 
     int32_t dst[31] = {0};
-    int32_t src[len(dst)];
-    for (int i = 0; i < len(dst); i++) {
-        src[i] = i;
-    }
+    int32_t src[31] = iota;
     weft_run(p, len(dst), (void*[]){dst,src});
 
     for (int i = 0; i < len(dst); i++) {
-        assert(dst[i] == src[i]);
+        assert_eq(dst[i], src[i]);
     }
 
     free(p);
@@ -229,15 +226,37 @@ static void test_arithmetic() {
     }
 
     float dst[31] = {0},
-          src[len(dst)];
-    for (int i = 0; i < len(dst); i++) {
-        src[i] = (float)i;
-    }
+          src[31] = iota;
     weft_run(p, len(dst), (void*[]){dst,src});
 
     for (int i = 0; i < len(dst); i++) {
-        assert(dst[i] <= src[i] &&
-               dst[i] >= src[i]);
+        assert_eq(dst[i], src[i]);
+    }
+
+    free(p);
+}
+
+static void test_cse() {
+    Program* p = NULL;
+    {
+        Builder* b = weft_builder();
+        V32 one = weft_splat_32(b, 0x3f800000);
+
+        V32 x = weft_load_32(b,1);
+        V32 y = weft_add_f32(b,x,one);
+        V32 z = weft_add_f32(b,x,one);
+        assert_eq(y.id, z.id);
+
+        weft_store_32(b,0,y);
+        p = weft_compile(b);
+    }
+
+    float dst[31] = {0},
+          src[31] = iota;
+    weft_run(p, len(dst), (void*[]){dst,src});
+
+    for (int i = 0; i < len(dst); i++) {
+        assert_eq(dst[i], src[i]+1);
     }
 
     free(p);
@@ -256,5 +275,6 @@ int main(void) {
     test_memcpy16();
     test_memcpy32();
     test_arithmetic();
+    test_cse();
     return 0;
 }
