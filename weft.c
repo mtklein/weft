@@ -12,16 +12,16 @@
     #define  __has_attribute(x) 0
 #endif
 
-typedef struct { int id; } V0;
+typedef struct { int id; } V0;  // Not important or sensical, just makes inst() macro work smoothly.
 typedef weft_V8            V8;
 typedef weft_V16           V16;
 typedef weft_V32           V32;
 
 typedef struct PInst {
     void (*fn)(const struct PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    int x,y,z,w;  // v+{x,y,z,w} gives the start of value {x,y,z,w}.
+    int x,y,z,w;  // V+x is start of value x, usually via macro e.g. v(I->x).  Same for y,z,w.
     int imm;
-    int slot;
+    int slot;     // Used only temporarily in weft_compile(), but this would be padding anyway.
 } PInst;
 
 typedef struct {
@@ -29,14 +29,14 @@ typedef struct {
     int  slots;
     void (*fn         )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
     void (*fn_and_done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    int  x,y,z,w;  // 1-indexed; {x,y,z,w}==0 indicates an unused argument.
+    int  x,y,z,w;  // 1-indexed; {x,y,z,w}==0 indicates an unused argument, used for DCE.
     int  imm;
     int  unused;
 } BInst;
 
 typedef struct weft_Builder {
-    BInst                 *inst;  // len is insts, cap grows by powers of 2
-    struct {int hash,id;} *cse;   // len is insts, cap is cse_cap
+    BInst                 *inst;    // Growing array, len is insts, cap grows by powers of 2.
+    struct {int hash,id;} *cse;     // Number of filled slots is insts, cap is cse_cap.
     int                    insts;
     int                    cse_cap;
 } Builder;
@@ -80,6 +80,8 @@ static int lookup(Builder* b, int hash, const BInst* inst) {
     }
     return 0;
 }
+
+// Note: b->insts has already been incremented by 1 before insert()/just_insert() are called.
 
 static void just_insert(Builder* b, int hash, int id) {
     assert(b->insts <= b->cse_cap);
@@ -280,10 +282,12 @@ void weft_store_32(Builder* b, int ptr, V32 x) {
 
 static const int f32_n0 = (int)0x80000000,
                  f32_p1 = (int)0x3f800000;
+
 static bool is_splat(Builder* b, int id, int* imm) {
     *imm = b->inst[id-1].imm;
     return b->inst[id-1].kind == SPLAT;
 }
+
 static void sort_commutative(int* x, int* y) {
     int lo = *x < *y ? *x : *y,
         hi = *x < *y ? *y : *x;
