@@ -34,7 +34,7 @@ weft_V8  weft_splat_8 (weft_Builder*, int bits);
 weft_V16 weft_splat_16(weft_Builder*, int bits);
 weft_V32 weft_splat_32(weft_Builder*, int bits);
 
-// Load a single scalr from the given pointer into each of a value's lanes.
+// Load a single scalar from the given pointer into each of a value's lanes.
 weft_V8  weft_uniform_8 (weft_Builder*, int ptr);
 weft_V16 weft_uniform_16(weft_Builder*, int ptr);
 weft_V32 weft_uniform_32(weft_Builder*, int ptr);
@@ -50,7 +50,7 @@ void weft_store_16(weft_Builder*, int ptr, weft_V16);
 void weft_store_32(weft_Builder*, int ptr, weft_V32);
 
 // Destructuring loads: load 2, 3, or 4 values per lane, deinterlacing them.
-// For example, you can use weft_load32x3() to load 3 weft_V32's from an array of
+// For example, you can use weft_load_32x3() to load 3 weft_V32's from an array of
 // struct { float x,y,z; }, with val[0] holding each x, val[1] each y, val[2] each z.
 struct weft_V8x2  { weft_V8  val[2]; } weft_load_8x2(weft_Builder*, int ptr);
 struct weft_V8x3  { weft_V8  val[3]; } weft_load_8x3(weft_Builder*, int ptr);
@@ -67,7 +67,7 @@ struct weft_V32x4 { weft_V32 val[4]; } weft_load_32x4(weft_Builder*, int ptr);
 // Structuring stores: store 2, 3, or 4 values per lane, interlacing them first.
 // In our example above of an array of struct { float x,y,z; } values,
 //     weft_V32 x = ..., y = ..., z = ...;
-//     weft_store32x3(builder,ptr,x,y,z);
+//     weft_store_32x3(builder,ptr,x,y,z);
 // interlaces the values in x, y, and z, and writes that array of structs back to memory.
 void weft_store_8x2(weft_Builder, int ptr, weft_V8, weft_V8);
 void weft_store_8x3(weft_Builder, int ptr, weft_V8, weft_V8, weft_V8);
