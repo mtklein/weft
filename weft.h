@@ -82,11 +82,14 @@ void weft_store_32x3(weft_Builder, int ptr, weft_V32, weft_V32, weft_V32);
 void weft_store_32x4(weft_Builder, int ptr, weft_V32, weft_V32, weft_V32, weft_V32);
 
 // Arithmetic.
-weft_V32 weft_add_f32 (weft_Builder*, weft_V32, weft_V32);
-weft_V32 weft_sub_f32 (weft_Builder*, weft_V32, weft_V32);
-weft_V32 weft_mul_f32 (weft_Builder*, weft_V32, weft_V32);
-weft_V32 weft_div_f32 (weft_Builder*, weft_V32, weft_V32);
-weft_V32 weft_sqrt_f32(weft_Builder*, weft_V32);
+weft_V32 weft_add_f32(weft_Builder*, weft_V32, weft_V32);
+weft_V32 weft_sub_f32(weft_Builder*, weft_V32, weft_V32);
+weft_V32 weft_mul_f32(weft_Builder*, weft_V32, weft_V32);
+weft_V32 weft_div_f32(weft_Builder*, weft_V32, weft_V32);
+
+weft_V32 weft_ceil_f32 (weft_Builder*, weft_V32);
+weft_V32 weft_floor_f32(weft_Builder*, weft_V32);
+weft_V32 weft_sqrt_f32 (weft_Builder*, weft_V32);
 
 weft_V32 weft_add_i32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_sub_i32(weft_Builder*, weft_V32, weft_V32);

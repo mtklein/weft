@@ -206,11 +206,10 @@ static bool is_splat(Builder* b, int id, int* imm) {
     return b->inst[id-1].kind == SPLAT;
 }
 
-stage( add_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i];   next(r+N); }
-stage( sub_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i];   next(r+N); }
-stage( mul_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i];   next(r+N); }
-stage( div_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]/y[i];   next(r+N); }
-stage(sqrt_f32) { float *r=R, *x=v(I->x);             each r[i] = sqrtf(x[i]); next(r+N); }
+stage(add_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
+stage(sub_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
+stage(mul_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
+stage(div_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]/y[i]; next(r+N); }
 
 V32 weft_add_f32 (Builder* b, V32 x, V32 y) {
     for (int imm; is_splat(b,y.id,&imm) && (imm == 0 || imm == (int)0x80000000);) { return x; }
@@ -231,9 +230,14 @@ V32 weft_div_f32 (Builder* b, V32 x, V32 y) {
     for (int imm; is_splat(b,y.id,&imm) && imm == 0x3f800000;) { return x; }
     return inst(b, MATH,32, div_f32, .x=x.id, .y=y.id);
 }
-V32 weft_sqrt_f32(Builder* b, V32 x) {
-    return inst(b, MATH,32,sqrt_f32, .x=x.id);
-}
+
+stage( ceil_f32) { float *r=R, *x=v(I->x); each r[i] =  ceilf(x[i]); next(r+N); }
+stage(floor_f32) { float *r=R, *x=v(I->x); each r[i] = floorf(x[i]); next(r+N); }
+stage( sqrt_f32) { float *r=R, *x=v(I->x); each r[i] =  sqrtf(x[i]); next(r+N); }
+
+V32  weft_ceil_f32(Builder* b, V32 x) { return inst(b, MATH,32, ceil_f32, .x=x.id); }
+V32 weft_floor_f32(Builder* b, V32 x) { return inst(b, MATH,32,floor_f32, .x=x.id); }
+V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.id); }
 
 stage(add_i32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
 stage(sub_i32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
