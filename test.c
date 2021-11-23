@@ -262,6 +262,33 @@ static void test_cse() {
     free(p);
 }
 
+static void test_commutative_sorting() {
+    Program* p = NULL;
+    {
+        Builder* b = weft_builder();
+        V32 one = weft_splat_32(b, 0x3f800000);
+
+        V32 x = weft_load_32(b,1);
+        V32 y = weft_add_f32(b,x,one);
+        V32 z = weft_add_f32(b,one,x);
+        assert_eq(y.id, z.id);
+
+        weft_store_32(b,0,y);
+        p = weft_compile(b);
+    }
+
+    float dst[31] = {0},
+          src[31] = iota;
+    weft_run(p, len(dst), (void*[]){dst,src});
+
+    for (int i = 0; i < len(dst); i++) {
+        assert_eq(dst[i], src[i]+1);
+    }
+
+    free(p);
+}
+
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -276,5 +303,6 @@ int main(void) {
     test_memcpy32();
     test_arithmetic();
     test_cse();
+    test_commutative_sorting();
     return 0;
 }
