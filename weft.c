@@ -1,5 +1,6 @@
 #include "weft.h"
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -120,84 +121,89 @@ void weft_run(const weft_Program* p, int n, void* const ptr[]) {
 #define next(R) I[1].fn(I+1,off,tail,V,R,ptr); return
 #define v(arg) (void*)( (char*)V + arg )
 
-stage(splat8 ) { int8_t  *r=R; each r[i] = (int8_t )I->imm; next(r+N); }
-stage(splat16) { int16_t *r=R; each r[i] = (int16_t)I->imm; next(r+N); }
-stage(splat32) { int32_t *r=R; each r[i] = (int32_t)I->imm; next(r+N); }
+stage(splat_8 ) { int8_t  *r=R; each r[i] = (int8_t )I->imm; next(r+N); }
+stage(splat_16) { int16_t *r=R; each r[i] = (int16_t)I->imm; next(r+N); }
+stage(splat_32) { int32_t *r=R; each r[i] = (int32_t)I->imm; next(r+N); }
 
-V8  weft_splat8 (Builder* b, int bits) { return inst(b, SPLAT,8 ,splat8 , .imm=bits); }
-V16 weft_splat16(Builder* b, int bits) { return inst(b, SPLAT,16,splat16, .imm=bits); }
-V32 weft_splat32(Builder* b, int bits) { return inst(b, SPLAT,32,splat32, .imm=bits); }
+V8  weft_splat_8 (Builder* b, int bits) { return inst(b, SPLAT,8 ,splat_8 , .imm=bits); }
+V16 weft_splat_16(Builder* b, int bits) { return inst(b, SPLAT,16,splat_16, .imm=bits); }
+V32 weft_splat_32(Builder* b, int bits) { return inst(b, SPLAT,32,splat_32, .imm=bits); }
 
-stage(uniform8)  { int8_t  *r=R, u=*(const int8_t* )ptr[I->imm]; each r[i] = u; next(r+N); }
-stage(uniform16) { int16_t *r=R, u=*(const int16_t*)ptr[I->imm]; each r[i] = u; next(r+N); }
-stage(uniform32) { int32_t *r=R, u=*(const int32_t*)ptr[I->imm]; each r[i] = u; next(r+N); }
+stage(uniform_8)  { int8_t  *r=R, u=*(const int8_t* )ptr[I->imm]; each r[i] = u; next(r+N); }
+stage(uniform_16) { int16_t *r=R, u=*(const int16_t*)ptr[I->imm]; each r[i] = u; next(r+N); }
+stage(uniform_32) { int32_t *r=R, u=*(const int32_t*)ptr[I->imm]; each r[i] = u; next(r+N); }
 
-V8  weft_uniform8 (Builder* b, int ptr) { return inst(b, UNIFORM,8 ,uniform8 , .imm=ptr); }
-V16 weft_uniform16(Builder* b, int ptr) { return inst(b, UNIFORM,16,uniform16, .imm=ptr); }
-V32 weft_uniform32(Builder* b, int ptr) { return inst(b, UNIFORM,32,uniform32, .imm=ptr); }
+V8  weft_uniform_8 (Builder* b, int ptr) { return inst(b, UNIFORM,8 ,uniform_8 , .imm=ptr); }
+V16 weft_uniform_16(Builder* b, int ptr) { return inst(b, UNIFORM,16,uniform_16, .imm=ptr); }
+V32 weft_uniform_32(Builder* b, int ptr) { return inst(b, UNIFORM,32,uniform_32, .imm=ptr); }
 
-stage(load8) {
+stage(load_8) {
     int8_t* r = R;
     tail ? memcpy(r, (const int8_t*)ptr[I->imm] + off, 1*tail)
          : memcpy(r, (const int8_t*)ptr[I->imm] + off, 1*N);
     next(r+N);
 }
-stage(load16) {
+stage(load_16) {
     int16_t* r = R;
     tail ? memcpy(r, (const int16_t*)ptr[I->imm] + off, 2*tail)
          : memcpy(r, (const int16_t*)ptr[I->imm] + off, 2*N);
     next(r+N);
 }
-stage(load32) {
+stage(load_32) {
     int32_t* r = R;
     tail ? memcpy(r, (const int32_t*)ptr[I->imm] + off, 4*tail)
          : memcpy(r, (const int32_t*)ptr[I->imm] + off, 4*N);
     next(r+N);
 }
 
-V8  weft_load8 (Builder* b, int ptr) { return inst(b, LOAD,8 ,load8 , .imm=ptr); }
-V16 weft_load16(Builder* b, int ptr) { return inst(b, LOAD,16,load16, .imm=ptr); }
-V32 weft_load32(Builder* b, int ptr) { return inst(b, LOAD,32,load32, .imm=ptr); }
+V8  weft_load_8 (Builder* b, int ptr) { return inst(b, LOAD,8 ,load_8 , .imm=ptr); }
+V16 weft_load_16(Builder* b, int ptr) { return inst(b, LOAD,16,load_16, .imm=ptr); }
+V32 weft_load_32(Builder* b, int ptr) { return inst(b, LOAD,32,load_32, .imm=ptr); }
 
-stage(store8) {
+stage(store_8) {
     tail ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*tail)
          : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*N);
     next(R);
 }
-stage(store8_and_done) {
+stage(store_8_and_done) {
     tail ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*tail)
          : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*N);
     (void)R;
 }
-stage(store16) {
+stage(store_16) {
     tail ? memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*tail)
          : memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*N);
     next(R);
 }
-stage(store16_and_done) {
+stage(store_16_and_done) {
     tail ? memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*tail)
          : memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*N);
     (void)R;
 }
-stage(store32) {
+stage(store_32) {
     tail ? memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*tail)
          : memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*N);
     next(R);
 }
-stage(store32_and_done) {
+stage(store_32_and_done) {
     tail ? memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*tail)
          : memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*N);
     (void)R;
 }
 
-void weft_store8(Builder* b, int ptr, V8  x) {
-    inst(b, STORE,0,store8 , .fn_and_done=store8_and_done , .x=x.id, .imm=ptr);
+void weft_store_8(Builder* b, int ptr, V8  x) {
+    inst(b, STORE,0,store_8 , .fn_and_done=store_8_and_done , .x=x.id, .imm=ptr);
 }
-void weft_store16(Builder* b, int ptr, V16 x) {
-    inst(b, STORE,0,store16, .fn_and_done=store16_and_done, .x=x.id, .imm=ptr);
+void weft_store_16(Builder* b, int ptr, V16 x) {
+    inst(b, STORE,0,store_16, .fn_and_done=store_16_and_done, .x=x.id, .imm=ptr);
 }
-void weft_store32(Builder* b, int ptr, V32 x) {
-    inst(b, STORE,0,store32, .fn_and_done=store32_and_done, .x=x.id, .imm=ptr);
+void weft_store_32(Builder* b, int ptr, V32 x) {
+    inst(b, STORE,0,store_32, .fn_and_done=store_32_and_done, .x=x.id, .imm=ptr);
+}
+
+static bool is_splat(Builder* b, int id, int* imm) {
+    *imm = b->inst[id-1].imm;
+    return b->inst[id-1].kind == SPLAT;
 }
 
 stage( add_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i];   next(r+N); }
@@ -206,8 +212,116 @@ stage( mul_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i];   n
 stage( div_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]/y[i];   next(r+N); }
 stage(sqrt_f32) { float *r=R, *x=v(I->x);             each r[i] = sqrtf(x[i]); next(r+N); }
 
-V32 weft_add_f32 (Builder* b, V32 x, V32 y) { return inst(b, MATH,32, add_f32, .x=x.id, .y=y.id); }
-V32 weft_sub_f32 (Builder* b, V32 x, V32 y) { return inst(b, MATH,32, sub_f32, .x=x.id, .y=y.id); }
-V32 weft_mul_f32 (Builder* b, V32 x, V32 y) { return inst(b, MATH,32, mul_f32, .x=x.id, .y=y.id); }
-V32 weft_div_f32 (Builder* b, V32 x, V32 y) { return inst(b, MATH,32, div_f32, .x=x.id, .y=y.id); }
-V32 weft_sqrt_f32(Builder* b, V32 x       ) { return inst(b, MATH,32,sqrt_f32, .x=x.id         ); }
+V32 weft_add_f32 (Builder* b, V32 x, V32 y) {
+    for (int imm; is_splat(b,y.id,&imm) && (imm == 0 || imm == (int)0x80000000);) { return x; }
+    for (int imm; is_splat(b,x.id,&imm) && (imm == 0 || imm == (int)0x80000000);) { return y; }
+    return inst(b, MATH,32, add_f32, .x=x.id, .y=y.id);
+}
+V32 weft_sub_f32 (Builder* b, V32 x, V32 y) {
+    for (int imm; is_splat(b,y.id,&imm) && (imm == 0 || imm == (int)0x80000000);) { return x; }
+    return inst(b, MATH,32, sub_f32, .x=x.id, .y=y.id);
+}
+V32 weft_mul_f32 (Builder* b, V32 x, V32 y) {
+    // Note: x*0 isn't 0 when x=NaN.
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0x3f800000;) { return x; }
+    for (int imm; is_splat(b,x.id,&imm) && imm == 0x3f800000;) { return y; }
+    return inst(b, MATH,32, mul_f32, .x=x.id, .y=y.id);
+}
+V32 weft_div_f32 (Builder* b, V32 x, V32 y) {
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0x3f800000;) { return x; }
+    return inst(b, MATH,32, div_f32, .x=x.id, .y=y.id);
+}
+V32 weft_sqrt_f32(Builder* b, V32 x) {
+    return inst(b, MATH,32,sqrt_f32, .x=x.id);
+}
+
+stage(add_i32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
+stage(sub_i32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
+stage(mul_i32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
+
+V32 weft_add_i32(Builder* b, V32 x, V32 y) {
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    for (int imm; is_splat(b,x.id,&imm) && imm == 0;) { return y; }
+    return inst(b, MATH,32,add_i32, .x=x.id, .y=y.id);
+}
+V32 weft_sub_i32(Builder* b, V32 x, V32 y) {
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,32,sub_i32, .x=x.id, .y=y.id);
+}
+V32 weft_mul_i32(Builder* b, V32 x, V32 y) {
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return y; }
+    for (int imm; is_splat(b,x.id,&imm) && imm == 0;) { return x; }
+    for (int imm; is_splat(b,y.id,&imm) && imm == 1;) { return x; }
+    for (int imm; is_splat(b,x.id,&imm) && imm == 1;) { return y; }
+    return inst(b, MATH,32,mul_i32, .x=x.id, .y=y.id);
+}
+
+stage(shlv_i32) {  int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]<<y[i]; next(r+N); }
+stage(shrv_s32) {  int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]>>y[i]; next(r+N); }
+stage(shrv_u32) { uint32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]>>y[i]; next(r+N); }
+
+stage(shli_i32) {  int32_t *r=R, *x=v(I->x); each r[i] = x[i]<<I->imm; next(r+N); }
+stage(shri_s32) {  int32_t *r=R, *x=v(I->x); each r[i] = x[i]>>I->imm; next(r+N); }
+stage(shri_u32) { uint32_t *r=R, *x=v(I->x); each r[i] = x[i]>>I->imm; next(r+N); }
+
+
+V32 weft_shl_i32(Builder* b, V32 x, V32 y) {
+    for (int imm; is_splat(b,y.id,&imm);) {
+        if (imm == 0) { return x; }
+        return inst(b, MATH,32,shli_i32, .x=x.id, .imm=imm);
+    }
+    return inst(b, MATH,32,shlv_i32, .x=x.id, .y=y.id);
+}
+V32 weft_shr_s32(Builder* b, V32 x, V32 y) {
+    for (int imm; is_splat(b,y.id,&imm);) {
+        if (imm == 0) { return x; }
+        return inst(b, MATH,32,shri_s32, .x=x.id, .imm=imm);
+    }
+    return inst(b, MATH,32,shrv_s32, .x=x.id, .y=y.id);
+}
+V32 weft_shr_u32(Builder* b, V32 x, V32 y) {
+    for (int imm; is_splat(b,y.id,&imm);) {
+        if (imm == 0) { return x; }
+        return inst(b, MATH,32,shri_u32, .x=x.id, .imm=imm);
+    }
+    return inst(b, MATH,32,shrv_u32, .x=x.id, .y=y.id);
+}
+
+stage(and_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]&y[i]; next(r+N); }
+stage( or_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]|y[i]; next(r+N); }
+stage(xor_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]^y[i]; next(r+N); }
+stage(sel_32) {
+    int32_t *r=R, *x=v(I->x), *y=v(I->y), *z=v(I->z);
+    each r[i] = ( x[i] & y[i])
+              | (~x[i] & z[i]);
+    next(r+N);
+}
+
+V32 weft_and_32(Builder* b, V32 x, V32 y) {
+    if (x.id == y.id) { return x; }
+    for (int imm; is_splat(b,y.id,&imm) && imm ==  0;) { return y; }
+    for (int imm; is_splat(b,x.id,&imm) && imm ==  0;) { return x; }
+    for (int imm; is_splat(b,y.id,&imm) && imm == -1;) { return x; }
+    for (int imm; is_splat(b,x.id,&imm) && imm == -1;) { return y; }
+    return inst(b, MATH,32,and_32, .x=x.id, .y=y.id);
+}
+V32 weft_or_32(Builder* b, V32 x, V32 y) {
+    if (x.id == y.id) { return x; }
+    for (int imm; is_splat(b,y.id,&imm) && imm ==  0;) { return x; }
+    for (int imm; is_splat(b,x.id,&imm) && imm ==  0;) { return y; }
+    for (int imm; is_splat(b,y.id,&imm) && imm == -1;) { return y; }
+    for (int imm; is_splat(b,x.id,&imm) && imm == -1;) { return x; }
+    return inst(b, MATH,32, or_32, .x=x.id, .y=y.id);
+}
+V32 weft_xor_32(Builder* b, V32 x, V32 y) {
+    if (x.id == y.id) { return weft_splat_32(b,0); }
+    for (int imm; is_splat(b,y.id,&imm) && imm ==  0;) { return x; }
+    for (int imm; is_splat(b,x.id,&imm) && imm ==  0;) { return y; }
+    return inst(b, MATH,32,xor_32, .x=x.id, .y=y.id);
+}
+V32 weft_sel_32(Builder* b, V32 x, V32 y, V32 z) {
+    for (int imm; is_splat(b,x.id,&imm) && imm ==  0;) { return z; }
+    for (int imm; is_splat(b,x.id,&imm) && imm == -1;) { return y; }
+    for (int imm; is_splat(b,z.id,&imm) && imm ==  0;) { return weft_and_32(b,x,y); }
+    return inst(b, MATH,32,sel_32, .x=x.id, .y=y.id, .z=z.id);
+}

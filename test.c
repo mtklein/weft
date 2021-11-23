@@ -34,8 +34,8 @@ static void test_memset8() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V8 x = weft_splat8(b, 0x42);
-        weft_store8(b,0,x);
+        V8 x = weft_splat_8(b, 0x42);
+        weft_store_8(b,0,x);
         p = weft_compile(b);
     }
 
@@ -52,8 +52,8 @@ static void test_memset16() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V16 x = weft_splat16(b, 0x4243);
-        weft_store16(b,0,x);
+        V16 x = weft_splat_16(b, 0x4243);
+        weft_store_16(b,0,x);
         p = weft_compile(b);
     }
 
@@ -70,8 +70,8 @@ static void test_memset32() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V32 x = weft_splat32(b, 0x42431701);
-        weft_store32(b,0,x);
+        V32 x = weft_splat_32(b, 0x42431701);
+        weft_store_32(b,0,x);
         p = weft_compile(b);
     }
 
@@ -89,8 +89,8 @@ static void test_memset_uniform8() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V8 x = weft_uniform8(b, 1);
-        weft_store8(b,0,x);
+        V8 x = weft_uniform_8(b, 1);
+        weft_store_8(b,0,x);
         p = weft_compile(b);
     }
 
@@ -108,8 +108,8 @@ static void test_memset_uniform16() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V16 x = weft_uniform16(b, 1);
-        weft_store16(b,0,x);
+        V16 x = weft_uniform_16(b, 1);
+        weft_store_16(b,0,x);
         p = weft_compile(b);
     }
 
@@ -127,8 +127,8 @@ static void test_memset_uniform32() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V32 x = weft_uniform32(b, 1);
-        weft_store32(b,0,x);
+        V32 x = weft_uniform_32(b, 1);
+        weft_store_32(b,0,x);
         p = weft_compile(b);
     }
 
@@ -147,8 +147,8 @@ static void test_memcpy8() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V8 x = weft_load8(b,1);
-        weft_store8(b,0,x);
+        V8 x = weft_load_8(b,1);
+        weft_store_8(b,0,x);
         p = weft_compile(b);
     }
 
@@ -169,8 +169,8 @@ static void test_memcpy16() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V16 x = weft_load16(b,1);
-        weft_store16(b,0,x);
+        V16 x = weft_load_16(b,1);
+        weft_store_16(b,0,x);
         p = weft_compile(b);
     }
 
@@ -191,8 +191,8 @@ static void test_memcpy32() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V32 x = weft_load32(b,1);
-        weft_store32(b,0,x);
+        V32 x = weft_load_32(b,1);
+        weft_store_32(b,0,x);
         p = weft_compile(b);
     }
 
@@ -214,9 +214,9 @@ static void test_arithmetic() {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
-        V32 one = weft_splat32(b, 0x3f800000);
+        V32 one = weft_splat_32(b, 0x3f800000);
 
-        V32 x = weft_load32(b,1);
+        V32 x = weft_load_32(b,1);
         x = weft_add_f32(b,x,one);
         x = weft_sub_f32(b,x,one);
         x = weft_div_f32(b,x,one);
@@ -224,7 +224,7 @@ static void test_arithmetic() {
         x = weft_mul_f32(b,x,x);
         x = weft_sqrt_f32(b,x);
 
-        weft_store32(b,0,x);
+        weft_store_32(b,0,x);
         p = weft_compile(b);
     }
 
