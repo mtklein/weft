@@ -68,7 +68,9 @@ static void done(const PInst* program, int off, unsigned tail,
 }
 
 Program* weft_compile(Builder* b) {
-    (void)inst(b, DONE,0,done, .imm=0);
+    if (b->insts == 0 || !b->inst[b->insts-1].fn_and_done) {
+        (void)inst(b, DONE,0,done, .imm=0);
+    }
 
     Program* p = malloc(sizeof(*p) + (size_t)b->insts * sizeof(*p->inst));
     p->slots = 0;
@@ -162,20 +164,41 @@ stage(store8) {
          : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*N);
     next(R);
 }
+stage(store8_and_done) {
+    tail ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*tail)
+         : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*N);
+    (void)R;
+}
 stage(store16) {
     tail ? memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*tail)
          : memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*N);
     next(R);
+}
+stage(store16_and_done) {
+    tail ? memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*tail)
+         : memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*N);
+    (void)R;
 }
 stage(store32) {
     tail ? memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*tail)
          : memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*N);
     next(R);
 }
+stage(store32_and_done) {
+    tail ? memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*tail)
+         : memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*N);
+    (void)R;
+}
 
-void weft_store8 (Builder* b, int ptr, V8  x) { inst(b, STORE,0,store8 , .x=x.id, .imm=ptr); }
-void weft_store16(Builder* b, int ptr, V16 x) { inst(b, STORE,0,store16, .x=x.id, .imm=ptr); }
-void weft_store32(Builder* b, int ptr, V32 x) { inst(b, STORE,0,store32, .x=x.id, .imm=ptr); }
+void weft_store8(Builder* b, int ptr, V8  x) {
+    inst(b, STORE,0,store8 , .fn_and_done=store8_and_done , .x=x.id, .imm=ptr);
+}
+void weft_store16(Builder* b, int ptr, V16 x) {
+    inst(b, STORE,0,store16, .fn_and_done=store16_and_done, .x=x.id, .imm=ptr);
+}
+void weft_store32(Builder* b, int ptr, V32 x) {
+    inst(b, STORE,0,store32, .fn_and_done=store32_and_done, .x=x.id, .imm=ptr);
+}
 
 stage( add_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i];   next(r+N); }
 stage( sub_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i];   next(r+N); }
