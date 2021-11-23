@@ -201,9 +201,16 @@ void weft_store_32(Builder* b, int ptr, V32 x) {
     inst(b, STORE,0,store_32, .fn_and_done=store_32_and_done, .x=x.id, .imm=ptr);
 }
 
+
 static bool is_splat(Builder* b, int id, int* imm) {
     *imm = b->inst[id-1].imm;
     return b->inst[id-1].kind == SPLAT;
+}
+static void sort_commutative(int* x, int* y) {
+    int lo = *x < *y ? *x : *y,
+        hi = *x < *y ? *y : *x;
+    *x = lo;
+    *y = hi;
 }
 
 stage(add_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
@@ -212,6 +219,7 @@ stage(mul_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next
 stage(div_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]/y[i]; next(r+N); }
 
 V32 weft_add_f32 (Builder* b, V32 x, V32 y) {
+    sort_commutative(&x.id, &y.id);
     for (int imm; is_splat(b,y.id,&imm) && (imm == 0 || imm == (int)0x80000000);) { return x; }
     for (int imm; is_splat(b,x.id,&imm) && (imm == 0 || imm == (int)0x80000000);) { return y; }
     return inst(b, MATH,32, add_f32, .x=x.id, .y=y.id);
@@ -221,6 +229,7 @@ V32 weft_sub_f32 (Builder* b, V32 x, V32 y) {
     return inst(b, MATH,32, sub_f32, .x=x.id, .y=y.id);
 }
 V32 weft_mul_f32 (Builder* b, V32 x, V32 y) {
+    sort_commutative(&x.id, &y.id);
     // Note: x*0 isn't 0 when x=NaN.
     for (int imm; is_splat(b,y.id,&imm) && imm == 0x3f800000;) { return x; }
     for (int imm; is_splat(b,x.id,&imm) && imm == 0x3f800000;) { return y; }
@@ -244,6 +253,7 @@ stage(sub_i32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; ne
 stage(mul_i32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
 
 V32 weft_add_i32(Builder* b, V32 x, V32 y) {
+    sort_commutative(&x.id, &y.id);
     for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
     for (int imm; is_splat(b,x.id,&imm) && imm == 0;) { return y; }
     return inst(b, MATH,32,add_i32, .x=x.id, .y=y.id);
@@ -253,6 +263,7 @@ V32 weft_sub_i32(Builder* b, V32 x, V32 y) {
     return inst(b, MATH,32,sub_i32, .x=x.id, .y=y.id);
 }
 V32 weft_mul_i32(Builder* b, V32 x, V32 y) {
+    sort_commutative(&x.id, &y.id);
     for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return y; }
     for (int imm; is_splat(b,x.id,&imm) && imm == 0;) { return x; }
     for (int imm; is_splat(b,y.id,&imm) && imm == 1;) { return x; }
@@ -302,6 +313,7 @@ stage(sel_32) {
 }
 
 V32 weft_and_32(Builder* b, V32 x, V32 y) {
+    sort_commutative(&x.id, &y.id);
     if (x.id == y.id) { return x; }
     for (int imm; is_splat(b,y.id,&imm) && imm ==  0;) { return y; }
     for (int imm; is_splat(b,x.id,&imm) && imm ==  0;) { return x; }
@@ -310,6 +322,7 @@ V32 weft_and_32(Builder* b, V32 x, V32 y) {
     return inst(b, MATH,32,and_32, .x=x.id, .y=y.id);
 }
 V32 weft_or_32(Builder* b, V32 x, V32 y) {
+    sort_commutative(&x.id, &y.id);
     if (x.id == y.id) { return x; }
     for (int imm; is_splat(b,y.id,&imm) && imm ==  0;) { return x; }
     for (int imm; is_splat(b,x.id,&imm) && imm ==  0;) { return y; }
@@ -318,6 +331,7 @@ V32 weft_or_32(Builder* b, V32 x, V32 y) {
     return inst(b, MATH,32, or_32, .x=x.id, .y=y.id);
 }
 V32 weft_xor_32(Builder* b, V32 x, V32 y) {
+    sort_commutative(&x.id, &y.id);
     if (x.id == y.id) { return weft_splat_32(b,0); }
     for (int imm; is_splat(b,y.id,&imm) && imm ==  0;) { return x; }
     for (int imm; is_splat(b,x.id,&imm) && imm ==  0;) { return y; }
