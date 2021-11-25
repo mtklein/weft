@@ -110,10 +110,10 @@ static int inst_(Builder* b, BInst inst) {
         return id;
     }
 
-    int id = ++b->insts;
     if ((b->insts & (b->insts-1)) == 0) {
         b->inst = realloc(b->inst, (size_t)(b->insts ? 2*b->insts : 1) * sizeof(*b->inst));
     }
+    int id = ++b->insts;
     b->inst[id-1] = inst;
     insert(b,id,hash);
     return id;
