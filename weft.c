@@ -388,9 +388,10 @@ V32 weft_shr_u32(Builder* b, V32 x, V32 y) {
     return inst(b, MATH,32,shrv_u32, .x=x.id, .y=y.id);
 }
 
-stage(and_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]&y[i]; next(r+N); }
-stage( or_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]|y[i]; next(r+N); }
-stage(xor_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]^y[i]; next(r+N); }
+stage(and_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] & y[i]; next(r+N); }
+stage(bic_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] &~y[i]; next(r+N); }
+stage( or_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] | y[i]; next(r+N); }
+stage(xor_32) { int32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] ^ y[i]; next(r+N); }
 stage(sel_32) {
     int32_t *r=R, *x=v(I->x), *y=v(I->y), *z=v(I->z);
     each r[i] = ( x[i] & y[i])
@@ -427,5 +428,8 @@ V32 weft_sel_32(Builder* b, V32 x, V32 y, V32 z) {
     for (int imm; is_splat(b,x.id,&imm) && imm ==  0;) { return z; }
     for (int imm; is_splat(b,x.id,&imm) && imm == -1;) { return y; }
     for (int imm; is_splat(b,z.id,&imm) && imm ==  0;) { return weft_and_32(b,x,y); }
+    for (int imm; is_splat(b,y.id,&imm) && imm ==  0;) {
+        return inst(b, MATH,32,bic_32, .x=z.id, .y=x.id);
+    }
     return inst(b, MATH,32,sel_32, .x=x.id, .y=y.id, .z=z.id);
 }
