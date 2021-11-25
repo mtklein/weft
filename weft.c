@@ -12,45 +12,37 @@
     #define  __has_attribute(x) 0
 #endif
 
-typedef struct { int id; } V0;  // Not important or sensical, just makes inst() macro work smoothly.
+typedef struct { int id; } V0;  // Not really used or sensical; just enables inst() macro.
 typedef weft_V8            V8;
 typedef weft_V16           V16;
 typedef weft_V32           V32;
+typedef struct PInst       PInst;
 
-typedef struct PInst {
-    void (*fn)(const struct PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    int x,y,z,w;  // V+x is start of value x, usually via macro e.g. v(I->x).  Same for y,z,w.
-    int imm;
-    int slot;     // Used only temporarily in weft_compile(), but this would be padding anyway.
-} PInst;
+// BInst/Builder notes:
+//   - Value IDs x,y,z,w,id,lookup() are 1-indexed, with 0 meaning unused, N/A, etc.
+//   - The inst array has insts active elements and grows by doubling, 0->1->2->4->8->...
+//   - The cse table has insts id!=0 slots, and grows when 3/4 full, with capacity cse_cap.
+//   - insts has already been incremented by 1 before insert()/just_insert() are called.
 
 typedef struct {
     enum { MATH, SPLAT, UNIFORM, LOAD, STORE, DONE } kind;
     int  slots;
     void (*fn         )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
     void (*fn_and_done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    int  x,y,z,w;  // 1-indexed; {x,y,z,w}==0 indicates an unused argument, used for DCE.
+    int  x,y,z,w;
     int  imm;
     int  unused;
 } BInst;
 
 typedef struct weft_Builder {
-    BInst                 *inst;    // Growing array, len is insts, cap grows by powers of 2.
-    struct {int hash,id;} *cse;     // Number of filled slots is insts, cap is cse_cap.
+    BInst                 *inst;
+    struct {int id,hash;} *cse;
     int                    insts;
     int                    cse_cap;
 } Builder;
 
-typedef struct weft_Program {
-    int   slots;
-    int   unused;
-    PInst inst[];
-} Program;
-
-
 Builder* weft_builder(void) {
-    Builder* b = calloc(1, sizeof(*b));
-    return b;
+    return calloc(1, sizeof(Builder));
 }
 
 #if __has_attribute(no_sanitize)
@@ -66,55 +58,49 @@ static uint32_t fnv1a(const void* vp, size_t len) {
 }
 
 static int lookup(Builder* b, int hash, const BInst* inst) {
-    hash = hash ? hash : 1;
-
-    int ix = hash & (b->cse_cap-1);
-    for (int i = 0; i < b->cse_cap; i++) {
-        if (b->cse[ix].hash == hash && !memcmp(inst, b->inst + b->cse[ix].id-1, sizeof(*inst))) {
-            return b->cse[ix].id;
-        }
-        if (b->cse[ix].hash == 0) {
+    int i = hash & (b->cse_cap-1);
+    for (int n = b->cse_cap; n --> 0;) {
+        if (b->cse[i].id == 0) {
             break;
         }
-        ix = (ix+1) & (b->cse_cap-1);
+        if (b->cse[i].hash == hash && !memcmp(inst, b->inst + b->cse[i].id-1, sizeof(*inst))) {
+            return b->cse[i].id;
+        }
+        i = (i+1) & (b->cse_cap-1);
     }
     return 0;
 }
 
-// Note: b->insts has already been incremented by 1 before insert()/just_insert() are called.
-
-static void just_insert(Builder* b, int hash, int id) {
+static void just_insert(Builder* b, int id, int hash) {
     assert(b->insts <= b->cse_cap);
-    hash = hash ? hash : 1;
-
-    int ix = hash & (b->cse_cap-1);
-    for (int i = 0; i < b->cse_cap; i++) {
-        if (b->cse[ix].hash == 0) {
-            b->cse[ix].hash = hash;
-            b->cse[ix].id   = id;
+    int i = hash & (b->cse_cap-1);
+    for (int n = b->cse_cap; n --> 0;) {
+        if (b->cse[i].id == 0) {
+            b->cse[i].id   = id;
+            b->cse[i].hash = hash;
             return;
         }
-        ix = (ix+1) & (b->cse_cap-1);
+        i = (i+1) & (b->cse_cap-1);
     }
     assert(false);
 }
 
-static void insert(Builder* b, int hash, int id) {
+static void insert(Builder* b, int id, int hash) {
     if (b->insts > (b->cse_cap*3)/4) {
         Builder grown = *b;
         grown.cse_cap = b->cse_cap ? b->cse_cap*2 : 1;
-        grown.cse = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
+        grown.cse     = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
 
-        for (int ix = 0; ix < b->cse_cap; ix++) {
-            if (b->cse[ix].hash) {
-                just_insert(&grown, b->cse[ix].hash, b->cse[ix].id);
+        for (int i = 0; i < b->cse_cap; i++) {
+            if (b->cse[i].hash) {
+                just_insert(&grown, b->cse[i].id, b->cse[i].hash);
             }
         }
 
         free(b->cse);
         *b = grown;
     }
-    just_insert(b,hash,id);
+    just_insert(b,id,hash);
 }
 
 static int inst_(Builder* b, BInst inst) {
@@ -124,24 +110,43 @@ static int inst_(Builder* b, BInst inst) {
         return id;
     }
 
+    int id = ++b->insts;
     if ((b->insts & (b->insts-1)) == 0) {
         b->inst = realloc(b->inst, (size_t)(b->insts ? 2*b->insts : 1) * sizeof(*b->inst));
     }
-
-    int id = ++b->insts;  // BInst IDs are 1-indexed;
     b->inst[id-1] = inst;
-    insert(b, hash, id);
+    insert(b,id,hash);
     return id;
 }
 #define inst(b,kind,bits,fn,...) (V##bits){inst_(b, (BInst){kind,bits/8,fn, __VA_ARGS__})}
 
-static void done(const PInst* program, int off, unsigned tail,
-                 void* v, void* r, void* const ptr[]) {
-    (void)program;
+// PInst/Program/stage/weft_compile()/weft_run() notes:
+//    - each stage writes to R (result) and calls next() with R incremented past its writes.
+//    - V+x is the start of argument value x, usually via macro v(I->x).  Same for y,z,w.
+//    - off tracks progress from 0 toward weft_run()'s n, for offseting varying pointers.
+//    - tail==0 when operating on a full N-sized chunk, or tail==k when it's only size k.
+//    - slot is used only temporarily in weft_compile(), but those bytes would be padding anyway.
+
+typedef struct PInst {
+    void (*fn)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
+    int x,y,z,w;
+    int imm;
+    int slot;
+} PInst;
+
+typedef struct weft_Program {
+    int   slots;
+    int   unused;
+    PInst inst[];
+} Program;
+
+static void done(const PInst* I, int off, unsigned tail,
+                 void* V, void* R, void* const ptr[]) {
+    (void)I;
     (void)off;
     (void)tail;
-    (void)v;
-    (void)r;
+    (void)V;
+    (void)R;
     (void)ptr;
 }
 
@@ -175,7 +180,6 @@ Program* weft_compile(Builder* b) {
 
     return p;
 }
-
 
 void weft_run(const weft_Program* p, int n, void* const ptr[]) {
     void* v = malloc(N * (size_t)p->slots);
