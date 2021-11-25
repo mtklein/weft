@@ -92,7 +92,7 @@ static void insert(Builder* b, int id, int hash) {
         grown.cse     = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
 
         for (int i = 0; i < b->cse_cap; i++) {
-            if (b->cse[i].hash) {
+            if (b->cse[i].id) {
                 just_insert(&grown, b->cse[i].id, b->cse[i].hash);
             }
         }
