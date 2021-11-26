@@ -9,15 +9,17 @@ rule link
     command = $cc $in -o $out
 
 rule run
-    command = $env ./$in > $out
+    command = $runtime ./$in > $out
 
 brew         = ~/brew/opt/llvm/bin/clang
 clang_cflags = -fcolor-diagnostics -Xclang -nostdsysteminc -Weverything
 
-opt    = clang $clang_cflags -O2
-x86_64 = clang $clang_cflags -O2 -arch x86_64 -momit-leaf-frame-pointer
-xsan   = clang $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
-lsan   = $brew $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
+opt    = clang  $clang_cflags -O2
+lto    = clang  $clang_cflags -O2 -flto
+x86_64 = clang  $clang_cflags -O2 -arch x86_64 -momit-leaf-frame-pointer
+xsan   = clang  $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
+lsan   = $brew  $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
+wasm   = zig cc $clang_cflags -target wasm32-wasi
 
 build out/opt/weft.o: compile weft.c
     cc = $opt
@@ -26,6 +28,15 @@ build out/opt/test.o: compile test.c
 build out/opt/test: link out/opt/weft.o out/opt/test.o
     cc = $opt
 build out/opt/test.ok: run out/opt/test
+
+
+build out/lto/weft.o: compile weft.c
+    cc = $lto
+build out/lto/test.o: compile test.c
+    cc = $lto
+build out/lto/test: link out/lto/weft.o out/lto/test.o
+    cc = $lto
+build out/lto/test.ok: run out/lto/test
 
 
 build out/x86_64/weft.o: compile weft.c
@@ -53,4 +64,14 @@ build out/lsan/test.o: compile test.c
 build out/lsan/test: link out/lsan/weft.o out/lsan/test.o
     cc = $lsan
 build out/lsan/test.ok: run out/lsan/test
-    env = env ASAN_OPTIONS=detect_leaks=1
+    runtime = env ASAN_OPTIONS=detect_leaks=1
+
+
+build out/wasm/weft.o: compile weft.c
+    cc = $wasm
+build out/wasm/test.o: compile test.c
+    cc = $wasm
+build out/wasm/test: link out/wasm/weft.o out/wasm/test.o
+    cc = $wasm
+build out/wasm/test.ok: run out/wasm/test
+    runtime = wasmtime

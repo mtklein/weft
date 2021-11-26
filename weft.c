@@ -11,7 +11,6 @@
 // TODO: f16
 // TODO: loadN/storeN
 // TODO: full condition coverage in tests
-// TODO: WASM testing
 // TODO: 64-bit types?
 
 #define N 8
