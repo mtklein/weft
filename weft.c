@@ -20,9 +20,8 @@ typedef struct PInst       PInst;
 
 // BInst/Builder notes:
 //   - Value IDs x,y,z,w,id,lookup() are 1-indexed, with 0 meaning unused, N/A, etc.
-//   - The inst array has insts active elements and grows by doubling, 0->1->2->4->8->...
-//   - The cse table has insts id!=0 slots, and grows when 3/4 full, with capacity cse_cap.
-//   - insts has already been incremented by 1 before insert()/just_insert() are called.
+//   - The inst dynamic array has insts active elements and grows by doubling, 0->1->2->4->8->...
+//   - The cse table has cse_len id!=0 slots out of capacity cse_cap, doubling when 3/4 full.
 
 typedef struct {
     enum { MATH, SPLAT, UNIFORM, LOAD, STORE, DONE } kind;
@@ -38,7 +37,9 @@ typedef struct weft_Builder {
     BInst                 *inst;
     struct {int id,hash;} *cse;
     int                    insts;
+    int                    cse_len;
     int                    cse_cap;
+    int                    unused;
 } Builder;
 
 Builder* weft_builder(void) {
@@ -72,12 +73,13 @@ static int lookup(Builder* b, int hash, const BInst* inst) {
 }
 
 static void just_insert(Builder* b, int id, int hash) {
-    assert(b->insts <= b->cse_cap);
+    assert(b->cse_len < b->cse_cap);
     int i = hash & (b->cse_cap-1);
     for (int n = b->cse_cap; n --> 0;) {
         if (b->cse[i].id == 0) {
             b->cse[i].id   = id;
             b->cse[i].hash = hash;
+            b->cse_len++;
             return;
         }
         i = (i+1) & (b->cse_cap-1);
@@ -86,17 +88,16 @@ static void just_insert(Builder* b, int id, int hash) {
 }
 
 static void insert(Builder* b, int id, int hash) {
-    if (b->insts > (b->cse_cap*3)/4) {
+    if (b->cse_len >= b->cse_cap*3/4) {
         Builder grown = *b;
+        grown.cse_len = 0;
         grown.cse_cap = b->cse_cap ? b->cse_cap*2 : 1;
         grown.cse     = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
-
         for (int i = 0; i < b->cse_cap; i++) {
             if (b->cse[i].id) {
                 just_insert(&grown, b->cse[i].id, b->cse[i].hash);
             }
         }
-
         free(b->cse);
         *b = grown;
     }
@@ -115,7 +116,9 @@ static int inst_(Builder* b, BInst inst) {
     }
     int id = ++b->insts;
     b->inst[id-1] = inst;
-    insert(b,id,hash);
+    if (inst.kind <= UNIFORM) {
+        insert(b,id,hash);
+    }
     return id;
 }
 #define inst(b,kind,bits,fn,...) (V##bits){inst_(b, (BInst){kind,bits/8,fn, __VA_ARGS__})}

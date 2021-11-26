@@ -163,6 +163,13 @@ static size_t commutative_sorting(Builder* b) {
     return store_32(b,0, weft_sub_f32(b,y,one));
 }
 
+static size_t no_load_cse(Builder* b) {
+    V32 x = weft_load_32(b,1),
+        y = weft_load_32(b,1);
+    assert(x.id != y.id);
+    return store_32(b,0, weft_and_32(b,x,y));
+}
+
 
 int main(void) {
     test_nothing();
@@ -180,6 +187,7 @@ int main(void) {
     test(arithmetic);
     test(cse);
     test(commutative_sorting);
+    test(no_load_cse);
 
     return 0;
 }
