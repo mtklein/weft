@@ -8,7 +8,6 @@
 
 // TODO: dead code elimination
 // TODO: loop invariant hoisting
-// TODO: f16
 // TODO: loadN/storeN
 // TODO: full condition coverage in tests
 // TODO: 64-bit types?
@@ -323,7 +322,9 @@ void weft_store_32(Builder* b, int ptr, V32 x) {
 }
 
 
-static const int f32_n0 = (int)0x80000000,
+static const int f16_n0 = (int)0x8000,
+                 f16_p1 = (int)0x3c00,
+                 f32_n0 = (int)0x80000000,
                  f32_p1 = (int)0x3f800000;
 
 static bool is_splat(Builder* b, int id, int imm) {
@@ -342,12 +343,59 @@ static void sort_commutative(int* x, int* y) {
     *y = hi;
 }
 
+stage(add_f16) {
+    __fp16 *r=R, *x=v(I->x), *y=v(I->y);
+    each r[i] = (__fp16)((float)x[i] + (float)y[i]);
+    next(r+N);
+}
+stage(sub_f16) {
+    __fp16 *r=R, *x=v(I->x), *y=v(I->y);
+    each r[i] = (__fp16)((float)x[i] - (float)y[i]);
+    next(r+N);
+}
+stage(mul_f16) {
+    __fp16 *r=R, *x=v(I->x), *y=v(I->y);
+    each r[i] = (__fp16)((float)x[i] * (float)y[i]);
+    next(r+N);
+}
+stage(div_f16) {
+    __fp16 *r=R, *x=v(I->x), *y=v(I->y);
+    each r[i] = (__fp16)((float)x[i] / (float)y[i]);
+    next(r+N);
+}
+
+V16 weft_add_f16(Builder* b, V16 x, V16 y) {
+    sort_commutative(&x.id, &y.id);
+    if (is_splat(b,y.id,      0)) { return x; }
+    if (is_splat(b,y.id, f16_n0)) { return x; }
+    if (is_splat(b,x.id,      0)) { return y; }
+    if (is_splat(b,x.id, f16_n0)) { return y; }
+    return inst(b, MATH,16, add_f16, .x=x.id, .y=y.id);
+}
+V16 weft_sub_f16(Builder* b, V16 x, V16 y) {
+    if (is_splat(b,y.id,      0)) { return x; }
+    if (is_splat(b,y.id, f16_n0)) { return x; }
+    return inst(b, MATH,16, sub_f16, .x=x.id, .y=y.id);
+}
+V16 weft_mul_f16(Builder* b, V16 x, V16 y) {
+    sort_commutative(&x.id, &y.id);
+    // Note: x*0 isn't 0 when x=NaN.
+    if (is_splat(b,y.id, f16_p1)) { return x; }
+    if (is_splat(b,x.id, f16_p1)) { return y; }
+    return inst(b, MATH,16, mul_f16, .x=x.id, .y=y.id);
+}
+V16 weft_div_f16(Builder* b, V16 x, V16 y) {
+    if (is_splat(b,y.id, f16_p1)) { return x; }
+    return inst(b, MATH,16, div_f16, .x=x.id, .y=y.id);
+}
+
 stage(add_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
 stage(sub_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
 stage(mul_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
 stage(div_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]/y[i]; next(r+N); }
 
-V32 weft_add_f32 (Builder* b, V32 x, V32 y) {
+
+V32 weft_add_f32(Builder* b, V32 x, V32 y) {
     sort_commutative(&x.id, &y.id);
     if (is_splat(b,y.id,      0)) { return x; }
     if (is_splat(b,y.id, f32_n0)) { return x; }
@@ -355,27 +403,33 @@ V32 weft_add_f32 (Builder* b, V32 x, V32 y) {
     if (is_splat(b,x.id, f32_n0)) { return y; }
     return inst(b, MATH,32, add_f32, .x=x.id, .y=y.id);
 }
-V32 weft_sub_f32 (Builder* b, V32 x, V32 y) {
+V32 weft_sub_f32(Builder* b, V32 x, V32 y) {
     if (is_splat(b,y.id,      0)) { return x; }
     if (is_splat(b,y.id, f32_n0)) { return x; }
     return inst(b, MATH,32, sub_f32, .x=x.id, .y=y.id);
 }
-V32 weft_mul_f32 (Builder* b, V32 x, V32 y) {
+V32 weft_mul_f32(Builder* b, V32 x, V32 y) {
     sort_commutative(&x.id, &y.id);
     // Note: x*0 isn't 0 when x=NaN.
     if (is_splat(b,y.id, f32_p1)) { return x; }
     if (is_splat(b,x.id, f32_p1)) { return y; }
     return inst(b, MATH,32, mul_f32, .x=x.id, .y=y.id);
 }
-V32 weft_div_f32 (Builder* b, V32 x, V32 y) {
+V32 weft_div_f32(Builder* b, V32 x, V32 y) {
     if (is_splat(b,y.id, f32_p1)) { return x; }
     return inst(b, MATH,32, div_f32, .x=x.id, .y=y.id);
 }
 
-stage( ceil_f32) { float *r=R, *x=v(I->x); each r[i] =  ceilf(x[i]); next(r+N); }
-stage(floor_f32) { float *r=R, *x=v(I->x); each r[i] = floorf(x[i]); next(r+N); }
-stage( sqrt_f32) { float *r=R, *x=v(I->x); each r[i] =  sqrtf(x[i]); next(r+N); }
+stage( ceil_f16) { __fp16 *r=R, *x=v(I->x); each r[i] = (__fp16) ceilf((float)x[i]); next(r+N); }
+stage(floor_f16) { __fp16 *r=R, *x=v(I->x); each r[i] = (__fp16)floorf((float)x[i]); next(r+N); }
+stage( sqrt_f16) { __fp16 *r=R, *x=v(I->x); each r[i] = (__fp16) sqrtf((float)x[i]); next(r+N); }
+stage( ceil_f32) { float  *r=R, *x=v(I->x); each r[i] =          ceilf(       x[i]); next(r+N); }
+stage(floor_f32) { float  *r=R, *x=v(I->x); each r[i] =         floorf(       x[i]); next(r+N); }
+stage( sqrt_f32) { float  *r=R, *x=v(I->x); each r[i] =          sqrtf(       x[i]); next(r+N); }
 
+V16  weft_ceil_f16(Builder* b, V16 x) { return inst(b, MATH,16, ceil_f16, .x=x.id); }
+V16 weft_floor_f16(Builder* b, V16 x) { return inst(b, MATH,16,floor_f16, .x=x.id); }
+V16  weft_sqrt_f16(Builder* b, V16 x) { return inst(b, MATH,16, sqrt_f16, .x=x.id); }
 V32  weft_ceil_f32(Builder* b, V32 x) { return inst(b, MATH,32, ceil_f32, .x=x.id); }
 V32 weft_floor_f32(Builder* b, V32 x) { return inst(b, MATH,32,floor_f32, .x=x.id); }
 V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.id); }
