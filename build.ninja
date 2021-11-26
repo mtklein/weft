@@ -1,0 +1,33 @@
+builddir = out
+
+rule compile
+    command = $cc -MD -MF $out.d -g -Werror -c $in -o $out
+    depfile = $out.d
+    deps    = gcc
+
+rule link
+    command = $cc $in -o $out
+
+rule run
+    command = $env ./$in > $out
+
+clang = clang -Xclang -nostdsysteminc -Weverything
+san = $clang -fsanitize=address,integer,undefined -fno-sanitize-recover=all
+opt = $clang -O2
+
+build out/san/weft.o: compile weft.c
+    cc = $san
+build out/san/test.o: compile test.c
+    cc = $san
+build out/san/test: link out/san/weft.o out/san/test.o
+    cc = $san
+build out/san/test.ok: run out/san/test
+
+build out/opt/weft.o: compile weft.c
+    cc = $opt
+build out/opt/test.o: compile test.c
+    cc = $opt
+build out/opt/test: link out/opt/weft.o out/opt/test.o
+    cc = $opt
+
+build out/opt/test.ok: run out/opt/test
