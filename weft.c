@@ -338,218 +338,85 @@ V32 weft_floor_f32(Builder* b, V32 x) { return inst(b, MATH,32,floor_f32, .x=x.i
 V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.id); }
 
 #define INT_STAGES(B,ST,UT) \
-    stage(shl_i##B) {ST *r=R, *x=v(I->x), *y=v(I->y); each r[i] =(ST)(x[i] << y[i]); next(r+N);} \
-    stage(shr_s##B) {ST *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] >> y[i] ; next(r+N);} \
-    stage(shr_u##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] >> y[i] ; next(r+N);} \
     stage(add_i##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] +  y[i] ; next(r+N);} \
     stage(sub_i##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] -  y[i] ; next(r+N);} \
     stage(mul_i##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] *  y[i] ; next(r+N);} \
+    stage(shl_i##B) {ST *r=R, *x=v(I->x), *y=v(I->y); each r[i] =(ST)(x[i] << y[i]); next(r+N);} \
+    stage(shr_s##B) {ST *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] >> y[i] ; next(r+N);} \
+    stage(shr_u##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] >> y[i] ; next(r+N);} \
     stage(and_ ##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] &  y[i] ; next(r+N);} \
     stage(bic_ ##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] & ~y[i] ; next(r+N);} \
     stage( or_ ##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] |  y[i] ; next(r+N);} \
     stage(xor_ ##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] ^  y[i] ; next(r+N);} \
-    stage(sel_ ##B) {                                \
-        UT *r=R, *x=v(I->x), *y=v(I->y), *z=v(I->z); \
-        each r[i] = ( x[i] & y[i])                   \
-                  | (~x[i] & z[i]);                  \
-        next(r+N);                                   \
+    stage(sel_ ##B) {                                                                            \
+        UT *r=R, *x=v(I->x), *y=v(I->y), *z=v(I->z);                                             \
+        each r[i] = ( x[i] & y[i])                                                               \
+                  | (~x[i] & z[i]);                                                              \
+        next(r+N);                                                                               \
+    }                                                                                            \
+    V##B weft_add_i##B(Builder* b, V##B x, V##B y) {                                             \
+        sort_commutative(&x.id, &y.id);                                                          \
+        if (is_splat(b,y.id, 0)) { return x; }                                                   \
+        if (is_splat(b,x.id, 0)) { return y; }                                                   \
+        return inst(b, MATH,B,add_i##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                            \
+    V##B weft_sub_i##B(Builder* b, V##B x, V##B y) {                                             \
+        if (is_splat(b,y.id, 0)) { return x; }                                                   \
+        return inst(b, MATH,B,sub_i##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                            \
+    V##B weft_mul_i##B(Builder* b, V##B x, V##B y) {                                             \
+        sort_commutative(&x.id, &y.id);                                                          \
+        if (is_splat(b,y.id, 0)) { return y; }                                                   \
+        if (is_splat(b,x.id, 0)) { return x; }                                                   \
+        if (is_splat(b,y.id, 1)) { return x; }                                                   \
+        if (is_splat(b,x.id, 1)) { return y; }                                                   \
+        return inst(b, MATH,B,mul_i##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                            \
+    V##B weft_shl_i##B(Builder* b, V##B x, V##B y) {                                             \
+        if (is_splat(b,y.id,0)) { return x; }                                                    \
+        return inst(b, MATH,B,shl_i##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                            \
+    V##B weft_shr_s##B(Builder* b, V##B x, V##B y) {                                             \
+        if (is_splat(b,y.id,0)) { return x; }                                                    \
+        return inst(b, MATH,B,shr_s##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                            \
+    V##B weft_shr_u##B(Builder* b, V##B x, V##B y) {                                             \
+        if (is_splat(b,y.id,0)) { return x; }                                                    \
+        return inst(b, MATH,B,shr_u##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                            \
+    V##B weft_and_##B(Builder* b, V##B x, V##B y) {                                              \
+        sort_commutative(&x.id, &y.id);                                                          \
+        if (x.id == y.id) { return x; }                                                          \
+        if (is_splat(b,y.id, 0)) { return y; }                                                   \
+        if (is_splat(b,x.id, 0)) { return x; }                                                   \
+        if (is_splat(b,y.id,-1)) { return x; }                                                   \
+        if (is_splat(b,x.id,-1)) { return y; }                                                   \
+        return inst(b, MATH,B,and_##B, .x=x.id, .y=y.id);                                        \
+    }                                                                                            \
+    V##B weft_or_##B(Builder* b, V##B x, V##B y) {                                               \
+        sort_commutative(&x.id, &y.id);                                                          \
+        if (x.id == y.id) { return x; }                                                          \
+        if (is_splat(b,y.id, 0)) { return x; }                                                   \
+        if (is_splat(b,x.id, 0)) { return y; }                                                   \
+        if (is_splat(b,y.id,-1)) { return y; }                                                   \
+        if (is_splat(b,x.id,-1)) { return x; }                                                   \
+        return inst(b, MATH,B, or_##B, .x=x.id, .y=y.id);                                        \
+    }                                                                                            \
+    V##B weft_xor_##B(Builder* b, V##B x, V##B y) {                                              \
+        sort_commutative(&x.id, &y.id);                                                          \
+        if (x.id == y.id) { return weft_splat_##B(b,0); }                                        \
+        if (is_splat(b,y.id, 0)) { return x; }                                                   \
+        if (is_splat(b,x.id, 0)) { return y; }                                                   \
+        return inst(b, MATH,B, xor_##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                            \
+    V##B weft_sel_##B(Builder* b, V##B x, V##B y, V##B z) {                                      \
+        if (is_splat(b,x.id, 0)) { return z; }                                                   \
+        if (is_splat(b,x.id,-1)) { return y; }                                                   \
+        if (is_splat(b,z.id, 0)) { return weft_and_##B(b,x,y); }                                 \
+        if (is_splat(b,y.id, 0)) { return inst(b, MATH,B,bic_##B, .x=z.id, .y=x.id); }           \
+        return inst(b, MATH,B,sel_##B, .x=x.id, .y=y.id, .z=z.id);                               \
     }
 
 INT_STAGES( 8, int8_t, uint8_t)
 INT_STAGES(16,int16_t,uint16_t)
 INT_STAGES(32,int32_t,uint32_t)
-
-V8 weft_add_i8(Builder* b, V8 x, V8 y) {
-    sort_commutative(&x.id, &y.id);
-    if (is_splat(b,y.id, 0)) { return x; }
-    if (is_splat(b,x.id, 0)) { return y; }
-    return inst(b, MATH,8,add_i8, .x=x.id, .y=y.id);
-}
-V8 weft_sub_i8(Builder* b, V8 x, V8 y) {
-    if (is_splat(b,y.id, 0)) { return x; }
-    return inst(b, MATH,8,sub_i8, .x=x.id, .y=y.id);
-}
-V8 weft_mul_i8(Builder* b, V8 x, V8 y) {
-    sort_commutative(&x.id, &y.id);
-    if (is_splat(b,y.id, 0)) { return y; }
-    if (is_splat(b,x.id, 0)) { return x; }
-    if (is_splat(b,y.id, 1)) { return x; }
-    if (is_splat(b,x.id, 1)) { return y; }
-    return inst(b, MATH,8,mul_i8, .x=x.id, .y=y.id);
-}
-
-V16 weft_add_i16(Builder* b, V16 x, V16 y) {
-    sort_commutative(&x.id, &y.id);
-    if (is_splat(b,y.id, 0)) { return x; }
-    if (is_splat(b,x.id, 0)) { return y; }
-    return inst(b, MATH,16,add_i16, .x=x.id, .y=y.id);
-}
-V16 weft_sub_i16(Builder* b, V16 x, V16 y) {
-    if (is_splat(b,y.id, 0)) { return x; }
-    return inst(b, MATH,16,sub_i16, .x=x.id, .y=y.id);
-}
-V16 weft_mul_i16(Builder* b, V16 x, V16 y) {
-    sort_commutative(&x.id, &y.id);
-    if (is_splat(b,y.id, 0)) { return y; }
-    if (is_splat(b,x.id, 0)) { return x; }
-    if (is_splat(b,y.id, 1)) { return x; }
-    if (is_splat(b,x.id, 1)) { return y; }
-    return inst(b, MATH,16,mul_i16, .x=x.id, .y=y.id);
-}
-
-V32 weft_add_i32(Builder* b, V32 x, V32 y) {
-    sort_commutative(&x.id, &y.id);
-    if (is_splat(b,y.id, 0)) { return x; }
-    if (is_splat(b,x.id, 0)) { return y; }
-    return inst(b, MATH,32,add_i32, .x=x.id, .y=y.id);
-}
-V32 weft_sub_i32(Builder* b, V32 x, V32 y) {
-    if (is_splat(b,y.id, 0)) { return x; }
-    return inst(b, MATH,32,sub_i32, .x=x.id, .y=y.id);
-}
-V32 weft_mul_i32(Builder* b, V32 x, V32 y) {
-    sort_commutative(&x.id, &y.id);
-    if (is_splat(b,y.id, 0)) { return y; }
-    if (is_splat(b,x.id, 0)) { return x; }
-    if (is_splat(b,y.id, 1)) { return x; }
-    if (is_splat(b,x.id, 1)) { return y; }
-    return inst(b, MATH,32,mul_i32, .x=x.id, .y=y.id);
-}
-
-V8 weft_shl_i8(Builder* b, V8 x, V8 y) {
-    if (is_splat(b,y.id,0)) { return x; }
-    return inst(b, MATH,8,shl_i8, .x=x.id, .y=y.id);
-}
-V8 weft_shr_s8(Builder* b, V8 x, V8 y) {
-    if (is_splat(b,y.id,0)) { return x; }
-    return inst(b, MATH,8,shr_s8, .x=x.id, .y=y.id);
-}
-V8 weft_shr_u8(Builder* b, V8 x, V8 y) {
-    if (is_splat(b,y.id,0)) { return x; }
-    return inst(b, MATH,8,shr_u8, .x=x.id, .y=y.id);
-}
-
-V16 weft_shl_i16(Builder* b, V16 x, V16 y) {
-    if (is_splat(b,y.id,0)) { return x; }
-    return inst(b, MATH,16,shl_i16, .x=x.id, .y=y.id);
-}
-V16 weft_shr_s16(Builder* b, V16 x, V16 y) {
-    if (is_splat(b,y.id,0)) { return x; }
-    return inst(b, MATH,16,shr_s16, .x=x.id, .y=y.id);
-}
-V16 weft_shr_u16(Builder* b, V16 x, V16 y) {
-    if (is_splat(b,y.id,0)) { return x; }
-    return inst(b, MATH,16,shr_u16, .x=x.id, .y=y.id);
-}
-
-V32 weft_shl_i32(Builder* b, V32 x, V32 y) {
-    if (is_splat(b,y.id,0)) { return x; }
-    return inst(b, MATH,32,shl_i32, .x=x.id, .y=y.id);
-}
-V32 weft_shr_s32(Builder* b, V32 x, V32 y) {
-    if (is_splat(b,y.id,0)) { return x; }
-    return inst(b, MATH,32,shr_s32, .x=x.id, .y=y.id);
-}
-V32 weft_shr_u32(Builder* b, V32 x, V32 y) {
-    if (is_splat(b,y.id,0)) { return x; }
-    return inst(b, MATH,32,shr_u32, .x=x.id, .y=y.id);
-}
-
-V8 weft_and_8(Builder* b, V8 x, V8 y) {
-    sort_commutative(&x.id, &y.id);
-    if (x.id == y.id) { return x; }
-    if (is_splat(b,y.id, 0)) { return y; }
-    if (is_splat(b,x.id, 0)) { return x; }
-    if (is_splat(b,y.id,-1)) { return x; }
-    if (is_splat(b,x.id,-1)) { return y; }
-    return inst(b, MATH,8,and_8, .x=x.id, .y=y.id);
-}
-V8 weft_or_8(Builder* b, V8 x, V8 y) {
-    sort_commutative(&x.id, &y.id);
-    if (x.id == y.id) { return x; }
-    if (is_splat(b,y.id, 0)) { return x; }
-    if (is_splat(b,x.id, 0)) { return y; }
-    if (is_splat(b,y.id,-1)) { return y; }
-    if (is_splat(b,x.id,-1)) { return x; }
-    return inst(b, MATH,8, or_8, .x=x.id, .y=y.id);
-}
-V8 weft_xor_8(Builder* b, V8 x, V8 y) {
-    sort_commutative(&x.id, &y.id);
-    if (x.id == y.id) { return weft_splat_8(b,0); }
-    if (is_splat(b,y.id, 0)) { return x; }
-    if (is_splat(b,x.id, 0)) { return y; }
-    return inst(b, MATH,8,xor_8, .x=x.id, .y=y.id);
-}
-V8 weft_sel_8(Builder* b, V8 x, V8 y, V8 z) {
-    if (is_splat(b,x.id, 0)) { return z; }
-    if (is_splat(b,x.id,-1)) { return y; }
-    if (is_splat(b,z.id, 0)) { return weft_and_8(b,x,y); }
-    if (is_splat(b,y.id, 0)) { return inst(b, MATH,8,bic_8, .x=z.id, .y=x.id); }
-    return inst(b, MATH,8,sel_8, .x=x.id, .y=y.id, .z=z.id);
-}
-
-V16 weft_and_16(Builder* b, V16 x, V16 y) {
-    sort_commutative(&x.id, &y.id);
-    if (x.id == y.id) { return x; }
-    if (is_splat(b,y.id, 0)) { return y; }
-    if (is_splat(b,x.id, 0)) { return x; }
-    if (is_splat(b,y.id,-1)) { return x; }
-    if (is_splat(b,x.id,-1)) { return y; }
-    return inst(b, MATH,16,and_16, .x=x.id, .y=y.id);
-}
-V16 weft_or_16(Builder* b, V16 x, V16 y) {
-    sort_commutative(&x.id, &y.id);
-    if (x.id == y.id) { return x; }
-    if (is_splat(b,y.id, 0)) { return x; }
-    if (is_splat(b,x.id, 0)) { return y; }
-    if (is_splat(b,y.id,-1)) { return y; }
-    if (is_splat(b,x.id,-1)) { return x; }
-    return inst(b, MATH,16, or_16, .x=x.id, .y=y.id);
-}
-V16 weft_xor_16(Builder* b, V16 x, V16 y) {
-    sort_commutative(&x.id, &y.id);
-    if (x.id == y.id) { return weft_splat_16(b,0); }
-    if (is_splat(b,y.id, 0)) { return x; }
-    if (is_splat(b,x.id, 0)) { return y; }
-    return inst(b, MATH,16,xor_16, .x=x.id, .y=y.id);
-}
-V16 weft_sel_16(Builder* b, V16 x, V16 y, V16 z) {
-    if (is_splat(b,x.id, 0)) { return z; }
-    if (is_splat(b,x.id,-1)) { return y; }
-    if (is_splat(b,z.id, 0)) { return weft_and_16(b,x,y); }
-    if (is_splat(b,y.id, 0)) { return inst(b, MATH,16,bic_16, .x=z.id, .y=x.id); }
-    return inst(b, MATH,16,sel_16, .x=x.id, .y=y.id, .z=z.id);
-}
-
-V32 weft_and_32(Builder* b, V32 x, V32 y) {
-    sort_commutative(&x.id, &y.id);
-    if (x.id == y.id) { return x; }
-    if (is_splat(b,y.id, 0)) { return y; }
-    if (is_splat(b,x.id, 0)) { return x; }
-    if (is_splat(b,y.id,-1)) { return x; }
-    if (is_splat(b,x.id,-1)) { return y; }
-    return inst(b, MATH,32,and_32, .x=x.id, .y=y.id);
-}
-V32 weft_or_32(Builder* b, V32 x, V32 y) {
-    sort_commutative(&x.id, &y.id);
-    if (x.id == y.id) { return x; }
-    if (is_splat(b,y.id, 0)) { return x; }
-    if (is_splat(b,x.id, 0)) { return y; }
-    if (is_splat(b,y.id,-1)) { return y; }
-    if (is_splat(b,x.id,-1)) { return x; }
-    return inst(b, MATH,32, or_32, .x=x.id, .y=y.id);
-}
-V32 weft_xor_32(Builder* b, V32 x, V32 y) {
-    sort_commutative(&x.id, &y.id);
-    if (x.id == y.id) { return weft_splat_32(b,0); }
-    if (is_splat(b,y.id, 0)) { return x; }
-    if (is_splat(b,x.id, 0)) { return y; }
-    return inst(b, MATH,32,xor_32, .x=x.id, .y=y.id);
-}
-V32 weft_sel_32(Builder* b, V32 x, V32 y, V32 z) {
-    if (is_splat(b,x.id, 0)) { return z; }
-    if (is_splat(b,x.id,-1)) { return y; }
-    if (is_splat(b,z.id, 0)) { return weft_and_32(b,x,y); }
-    if (is_splat(b,y.id, 0)) { return inst(b, MATH,32,bic_32, .x=z.id, .y=x.id); }
-    return inst(b, MATH,32,sel_32, .x=x.id, .y=y.id, .z=z.id);
-}
