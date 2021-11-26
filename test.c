@@ -170,6 +170,13 @@ static size_t no_load_cse(Builder* b) {
     return store_32(b,0, weft_and_32(b,x,y));
 }
 
+static size_t constant_prop(Builder* b) {
+    V32 one  = weft_splat_32(b, 1),
+        big  = weft_add_i32(b, one, weft_splat_32(b, 63)),
+        same = weft_shr_s32(b, big, weft_splat_32(b, 6));
+    assert(same.id == one.id);
+    return store_32(b,0, weft_mul_i32(b, weft_load_32(b,1), one));
+}
 
 int main(void) {
     test_nothing();
@@ -188,6 +195,7 @@ int main(void) {
     test(cse);
     test(commutative_sorting);
     test(no_load_cse);
+    test(constant_prop);
 
     return 0;
 }

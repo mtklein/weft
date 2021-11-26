@@ -12,11 +12,22 @@
     #define  __has_attribute(x) 0
 #endif
 
-typedef struct { int id; } V0;  // Not really used or sensical; just enables inst() macro.
-typedef weft_V8            V8;
-typedef weft_V16           V16;
-typedef weft_V32           V32;
-typedef struct PInst       PInst;
+typedef weft_V8  V8;
+typedef weft_V16 V16;
+typedef weft_V32 V32;
+
+typedef struct PInst {
+    void (*fn)(const struct PInst*, int, unsigned, void*, void*, void* const ptr[]);
+    int x,y,z,w;
+    int imm;
+    int slot;  // Only used temporarily to translate BInst->PInst, but it's free padding anyway.
+} PInst;
+
+typedef struct weft_Program {
+    int   slots;
+    int   unused;
+    PInst inst[];
+} Program;
 
 typedef struct {
     enum { MATH, SPLAT, UNIFORM, LOAD, STORE, DONE } kind;
@@ -53,7 +64,7 @@ static uint32_t fnv1a(const void* vp, size_t len) {
     return hash;
 }
 
-static int lookup_id(Builder* b, int hash, const BInst* inst) {
+static int cse_lookup_id(Builder* b, int hash, const BInst* inst) {
     int i = hash & (b->cse_cap-1);
     for (int n = b->cse_cap; n --> 0;) {
         if (b->cse[i].id == 0) {
@@ -67,7 +78,7 @@ static int lookup_id(Builder* b, int hash, const BInst* inst) {
     return 0;
 }
 
-static void just_insert(Builder* b, int id, int hash) {
+static void cse_just_insert(Builder* b, int id, int hash) {
     assert(b->cse_len < b->cse_cap);
     int i = hash & (b->cse_cap-1);
     for (int n = b->cse_cap; n --> 0;) {
@@ -82,7 +93,7 @@ static void just_insert(Builder* b, int id, int hash) {
     assert(false);
 }
 
-static void insert(Builder* b, int id, int hash) {
+static void cse_insert(Builder* b, int id, int hash) {
     if (b->cse_len >= b->cse_cap*3/4) {
         Builder grown = *b;
         grown.cse_len = 0;
@@ -90,54 +101,95 @@ static void insert(Builder* b, int id, int hash) {
         grown.cse     = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
         for (int i = 0; i < b->cse_cap; i++) {
             if (b->cse[i].id) {
-                just_insert(&grown, b->cse[i].id, b->cse[i].hash);
+                cse_just_insert(&grown, b->cse[i].id, b->cse[i].hash);
             }
         }
         free(b->cse);
         *b = grown;
     }
-    just_insert(b,id,hash);
+    cse_just_insert(b,id,hash);
+}
+
+// Each stage writes to R ("result") and calls next() with R incremented past its writes.
+// Argument x starts at v(I->x); ditto for y,z,w.
+// off tracks weft_run()'s progress [0,n), for offseting varying pointers.
+// When operating on full N-sized chunks, tail is 0; tail is k for the final k<N sized chunk.
+#define stage(name) static void name(const PInst* I, int off, unsigned tail, \
+                                     void* restrict V, void* restrict R, void* const ptr[])
+#define each    for (int i = 0; i < N; i++)
+#define next(R) I[1].fn(I+1,off,tail,V,R,ptr); return
+#define v(arg)  (void*)( (char*)V + arg )
+
+stage(done) {
+    (void)I;
+    (void)off;
+    (void)tail;
+    (void)V;
+    (void)R;
+    (void)ptr;
 }
 
 static int inst_(Builder* b, BInst inst) {
     int hash = (int)fnv1a(&inst, sizeof(inst));
 
-    for (int id = lookup_id(b, hash, &inst); id;) {
+    for (int id = cse_lookup_id(b, hash, &inst); id;) {
         return id;
+    }
+
+    if (inst.kind == MATH
+            && (!inst.x || b->inst[inst.x-1].kind == SPLAT)
+            && (!inst.y || b->inst[inst.y-1].kind == SPLAT)
+            && (!inst.z || b->inst[inst.z-1].kind == SPLAT)
+            && (!inst.w || b->inst[inst.w-1].kind == SPLAT)) {
+        PInst constant_prop[6], *p=constant_prop;
+
+        int arg[] = {inst.x,inst.y,inst.z,inst.w};
+        int slots = 0;
+        for (int i = 0; i < 4; i++) {
+            if (arg[i]) {
+                *p++ = (PInst){.fn=b->inst[arg[i]-1].fn, .imm=b->inst[arg[i]-1].imm, .slot=slots};
+                slots += b->inst[arg[i]-1].slots;
+            }
+        }
+        *p++ = (PInst){
+            .fn  = inst.fn,
+            .x   = inst.x ? constant_prop[0].slot * N : 0,
+            .y   = inst.y ? constant_prop[1].slot * N : 0,
+            .z   = inst.z ? constant_prop[2].slot * N : 0,
+            .w   = inst.w ? constant_prop[3].slot * N : 0,
+            .imm = inst.imm,
+        };
+        *p++ = (PInst){.fn=done};
+
+        char v[5*4*N];
+        assert((slots + inst.slots)*N <= (int)sizeof(v));
+        constant_prop->fn(constant_prop,0,0,v,v,NULL);
+
+        int imm;
+        memcpy(&imm, v + slots*N, 4);
+        switch (inst.slots) {
+            case 1: return weft_splat_8 (b, imm).id;
+            case 2: return weft_splat_16(b, imm).id;
+            case 4: return weft_splat_32(b, imm).id;
+        }
+        assert(false);
     }
 
     int id = ++b->inst_len;
 
-    if (b->inst_len > b->inst_cap) {
+    if (b->inst_cap < b->inst_len) {
         b->inst_cap = b->inst_cap ? 2*b->inst_cap : 1;
         b->inst = realloc(b->inst, (size_t)b->inst_cap * sizeof(*b->inst));
     }
 
     b->inst[id-1] = inst;
     if (inst.kind <= UNIFORM) {
-        insert(b,id,hash);
+        cse_insert(b,id,hash);
     }
     return id;
 }
 #define inst(b,kind,bits,fn,...) (V##bits){inst_(b, (BInst){kind,bits/8,fn, __VA_ARGS__})}
-
-typedef struct PInst {
-    void (*fn)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    int x,y,z,w;
-    int imm;
-    int slot;  // Only used temporarily by weft_compile(), but it's free padding anyway.
-} PInst;
-
-typedef struct weft_Program {
-    int   slots;
-    int   unused;
-    PInst inst[];
-} Program;
-
-// Each stage writes to R ("result") and calls next() with R incremented past its writes.
-// Argument x starts at v(I->x); ditto for y,z,w.
-// off tracks weft_run()'s progress [0,n), for offseting varying pointers.
-// When operating on full N-sized chunks, tail is 0; tail is k for the final k<N sized chunk.
+typedef struct { int id; } V0;  // Lets us use inst() with non-value stages like stores and done.
 
 void weft_run(const weft_Program* p, int n, void* const ptr[]) {
     void* v = malloc(N * (size_t)p->slots);
@@ -152,22 +204,6 @@ void weft_run(const weft_Program* p, int n, void* const ptr[]) {
     }
 
     free(v);
-}
-
-#define stage(name) static void name(const PInst* I, int off, unsigned tail, \
-                                     void* restrict V, void* restrict R, void* const ptr[])
-
-#define each    for (int i = 0; i < N; i++)
-#define next(R) I[1].fn(I+1,off,tail,V,R,ptr); return
-#define v(arg)  (void*)( (char*)V + arg )
-
-stage(done) {
-    (void)I;
-    (void)off;
-    (void)tail;
-    (void)V;
-    (void)R;
-    (void)ptr;
 }
 
 Program* weft_compile(Builder* b) {
