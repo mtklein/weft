@@ -11,17 +11,12 @@ rule link
 rule run
     command = $env ./$in > $out
 
-clang = clang -Xclang -nostdsysteminc -Weverything
-san = $clang -fsanitize=address,integer,undefined -fno-sanitize-recover=all
-opt = $clang -O2
+brew         = ~/brew/opt/llvm/bin/clang
+clang_cflags = -fcolor-diagnostics -Xclang -nostdsysteminc -Weverything
 
-build out/san/weft.o: compile weft.c
-    cc = $san
-build out/san/test.o: compile test.c
-    cc = $san
-build out/san/test: link out/san/weft.o out/san/test.o
-    cc = $san
-build out/san/test.ok: run out/san/test
+opt  = clang $clang_cflags -O2
+xsan = clang $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
+lsan = $brew $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
 
 build out/opt/weft.o: compile weft.c
     cc = $opt
@@ -29,5 +24,23 @@ build out/opt/test.o: compile test.c
     cc = $opt
 build out/opt/test: link out/opt/weft.o out/opt/test.o
     cc = $opt
-
 build out/opt/test.ok: run out/opt/test
+
+
+build out/xsan/weft.o: compile weft.c
+    cc = $xsan
+build out/xsan/test.o: compile test.c
+    cc = $xsan
+build out/xsan/test: link out/xsan/weft.o out/xsan/test.o
+    cc = $xsan
+build out/xsan/test.ok: run out/xsan/test
+
+
+build out/lsan/weft.o: compile weft.c
+    cc = $lsan
+build out/lsan/test.o: compile test.c
+    cc = $lsan
+build out/lsan/test: link out/lsan/weft.o out/lsan/test.o
+    cc = $lsan
+build out/lsan/test.ok: run out/lsan/test
+    env = env ASAN_OPTIONS=detect_leaks=1

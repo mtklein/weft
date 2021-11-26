@@ -11,7 +11,6 @@
 // TODO: f16
 // TODO: loadN/storeN
 // TODO: full condition coverage in tests
-// TODO: LSAN testing
 // TODO: WASM testing
 // TODO: x86-64 testing
 // TODO: 64-bit types?
