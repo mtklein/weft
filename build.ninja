@@ -14,9 +14,10 @@ rule run
 brew         = ~/brew/opt/llvm/bin/clang
 clang_cflags = -fcolor-diagnostics -Xclang -nostdsysteminc -Weverything
 
-opt  = clang $clang_cflags -O2
-xsan = clang $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
-lsan = $brew $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
+opt    = clang $clang_cflags -O2
+x86_64 = clang $clang_cflags -O2 -arch x86_64 -momit-leaf-frame-pointer
+xsan   = clang $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
+lsan   = $brew $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
 
 build out/opt/weft.o: compile weft.c
     cc = $opt
@@ -25,6 +26,15 @@ build out/opt/test.o: compile test.c
 build out/opt/test: link out/opt/weft.o out/opt/test.o
     cc = $opt
 build out/opt/test.ok: run out/opt/test
+
+
+build out/x86_64/weft.o: compile weft.c
+    cc = $x86_64
+build out/x86_64/test.o: compile test.c
+    cc = $x86_64
+build out/x86_64/test: link out/x86_64/weft.o out/x86_64/test.o
+    cc = $x86_64
+build out/x86_64/test.ok: run out/x86_64/test
 
 
 build out/xsan/weft.o: compile weft.c
