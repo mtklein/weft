@@ -82,14 +82,19 @@ void weft_store_32x3(weft_Builder, int ptr, weft_V32, weft_V32, weft_V32);
 void weft_store_32x4(weft_Builder, int ptr, weft_V32, weft_V32, weft_V32, weft_V32);
 
 // Arithmetic.
-weft_V32 weft_add_f32(weft_Builder*, weft_V32, weft_V32);
-weft_V32 weft_sub_f32(weft_Builder*, weft_V32, weft_V32);
-weft_V32 weft_mul_f32(weft_Builder*, weft_V32, weft_V32);
-weft_V32 weft_div_f32(weft_Builder*, weft_V32, weft_V32);
+weft_V8 weft_add_i8(weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_sub_i8(weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_mul_i8(weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_shl_i8(weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_shr_s8(weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_shr_u8(weft_Builder*, weft_V8, weft_V8);
 
-weft_V32 weft_ceil_f32 (weft_Builder*, weft_V32);
-weft_V32 weft_floor_f32(weft_Builder*, weft_V32);
-weft_V32 weft_sqrt_f32 (weft_Builder*, weft_V32);
+weft_V16 weft_add_i16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_sub_i16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_mul_i16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_shl_i16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_shr_s16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_shr_u16(weft_Builder*, weft_V16, weft_V16);
 
 weft_V32 weft_add_i32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_sub_i32(weft_Builder*, weft_V32, weft_V32);
@@ -98,7 +103,37 @@ weft_V32 weft_shl_i32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_shr_s32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_shr_u32(weft_Builder*, weft_V32, weft_V32);
 
+
+weft_V8 weft_and_8(weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_or_8 (weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_xor_8(weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_sel_8(weft_Builder*, weft_V8, weft_V8, weft_V8);
+
+weft_V16 weft_and_16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_or_16 (weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_xor_16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_sel_16(weft_Builder*, weft_V16, weft_V16, weft_V16);
+
 weft_V32 weft_and_32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_or_32 (weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_xor_32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_sel_32(weft_Builder*, weft_V32, weft_V32, weft_V32);
+
+
+weft_V16 weft_add_f16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_sub_f16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_mul_f16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_div_f16(weft_Builder*, weft_V16, weft_V16);
+
+weft_V32 weft_add_f32(weft_Builder*, weft_V32, weft_V32);
+weft_V32 weft_sub_f32(weft_Builder*, weft_V32, weft_V32);
+weft_V32 weft_mul_f32(weft_Builder*, weft_V32, weft_V32);
+weft_V32 weft_div_f32(weft_Builder*, weft_V32, weft_V32);
+
+weft_V16 weft_ceil_f16 (weft_Builder*, weft_V16);
+weft_V16 weft_floor_f16(weft_Builder*, weft_V16);
+weft_V16 weft_sqrt_f16 (weft_Builder*, weft_V16);
+
+weft_V32 weft_ceil_f32 (weft_Builder*, weft_V32);
+weft_V32 weft_floor_f32(weft_Builder*, weft_V32);
+weft_V32 weft_sqrt_f32 (weft_Builder*, weft_V32);
