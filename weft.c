@@ -334,17 +334,27 @@ V32  weft_ceil_f32(Builder* b, V32 x) { return inst(b, MATH,32, ceil_f32, .x=x.i
 V32 weft_floor_f32(Builder* b, V32 x) { return inst(b, MATH,32,floor_f32, .x=x.id); }
 V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.id); }
 
-stage(add_i8) { uint8_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
-stage(sub_i8) { uint8_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
-stage(mul_i8) { uint8_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
+#define INT_STAGES(B,ST,UT) \
+    stage(shl_i##B) {ST *r=R, *x=v(I->x), *y=v(I->y); each r[i] =(ST)(x[i] << y[i]); next(r+N);} \
+    stage(shr_s##B) {ST *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] >> y[i] ; next(r+N);} \
+    stage(shr_u##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] >> y[i] ; next(r+N);} \
+    stage(add_i##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] +  y[i] ; next(r+N);} \
+    stage(sub_i##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] -  y[i] ; next(r+N);} \
+    stage(mul_i##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] *  y[i] ; next(r+N);} \
+    stage(and_ ##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] &  y[i] ; next(r+N);} \
+    stage(bic_ ##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] & ~y[i] ; next(r+N);} \
+    stage( or_ ##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] |  y[i] ; next(r+N);} \
+    stage(xor_ ##B) {UT *r=R, *x=v(I->x), *y=v(I->y); each r[i] =     x[i] ^  y[i] ; next(r+N);} \
+    stage(sel_ ##B) {                                \
+        UT *r=R, *x=v(I->x), *y=v(I->y), *z=v(I->z); \
+        each r[i] = ( x[i] & y[i])                   \
+                  | (~x[i] & z[i]);                  \
+        next(r+N);                                   \
+    }
 
-stage(add_i16) { uint16_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
-stage(sub_i16) { uint16_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
-stage(mul_i16) { uint16_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
-
-stage(add_i32) { uint32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
-stage(sub_i32) { uint32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
-stage(mul_i32) { uint32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
+INT_STAGES( 8, int8_t, uint8_t)
+INT_STAGES(16,int16_t,uint16_t)
+INT_STAGES(32,int32_t,uint32_t)
 
 V8 weft_add_i8(Builder* b, V8 x, V8 y) {
     sort_commutative(&x.id, &y.id);
@@ -403,127 +413,43 @@ V32 weft_mul_i32(Builder* b, V32 x, V32 y) {
     return inst(b, MATH,32,mul_i32, .x=x.id, .y=y.id);
 }
 
-stage(shlv_i8) { int8_t *r=R,*x=v(I->x),*y=v(I->y); each r[i]=(int8_t)(x[i]<<y[i]); next(r+N);}
-stage(shrv_s8) { int8_t *r=R,*x=v(I->x),*y=v(I->y); each r[i]=         x[i]>>y[i] ; next(r+N);}
-stage(shrv_u8) {uint8_t *r=R,*x=v(I->x),*y=v(I->y); each r[i]=         x[i]>>y[i] ; next(r+N);}
-
-stage(shli_i8) { int8_t *r=R, *x=v(I->x); each r[i]=(int8_t)(x[i]<<I->imm); next(r+N);}
-stage(shri_s8) { int8_t *r=R, *x=v(I->x); each r[i]=         x[i]>>I->imm ; next(r+N);}
-stage(shri_u8) {uint8_t *r=R, *x=v(I->x); each r[i]=         x[i]>>I->imm ; next(r+N);}
-
-stage(shlv_i16) { int16_t *r=R,*x=v(I->x),*y=v(I->y); each r[i]=(int16_t)(x[i]<<y[i]); next(r+N);}
-stage(shrv_s16) { int16_t *r=R,*x=v(I->x),*y=v(I->y); each r[i]=          x[i]>>y[i] ; next(r+N);}
-stage(shrv_u16) {uint16_t *r=R,*x=v(I->x),*y=v(I->y); each r[i]=          x[i]>>y[i] ; next(r+N);}
-
-stage(shli_i16) { int16_t *r=R,*x=v(I->x); each r[i]=(int16_t)(x[i]<<I->imm); next(r+N);}
-stage(shri_s16) { int16_t *r=R,*x=v(I->x); each r[i]=          x[i]>>I->imm ; next(r+N);}
-stage(shri_u16) {uint16_t *r=R,*x=v(I->x); each r[i]=          x[i]>>I->imm ; next(r+N);}
-
-stage(shlv_i32) { int32_t *r=R,*x=v(I->x), *y=v(I->y); each r[i] = x[i]<<y[i]; next(r+N);}
-stage(shrv_s32) { int32_t *r=R,*x=v(I->x), *y=v(I->y); each r[i] = x[i]>>y[i]; next(r+N);}
-stage(shrv_u32) {uint32_t *r=R,*x=v(I->x), *y=v(I->y); each r[i] = x[i]>>y[i]; next(r+N);}
-
-stage(shli_i32) { int32_t *r=R,*x=v(I->x); each r[i] = x[i]<<I->imm; next(r+N);}
-stage(shri_s32) { int32_t *r=R,*x=v(I->x); each r[i] = x[i]>>I->imm; next(r+N);}
-stage(shri_u32) {uint32_t *r=R,*x=v(I->x); each r[i] = x[i]>>I->imm; next(r+N);}
-
 V8 weft_shl_i8(Builder* b, V8 x, V8 y) {
-    for (int imm; is_splat(b,y.id,&imm);) {
-        if (imm == 0) { return x; }
-        return inst(b, MATH,8,shli_i8, .x=x.id, .imm=imm);
-    }
-    return inst(b, MATH,8,shlv_i8, .x=x.id, .y=y.id);
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,8,shl_i8, .x=x.id, .y=y.id);
 }
 V8 weft_shr_s8(Builder* b, V8 x, V8 y) {
-    for (int imm; is_splat(b,y.id,&imm);) {
-        if (imm == 0) { return x; }
-        return inst(b, MATH,8,shri_s8, .x=x.id, .imm=imm);
-    }
-    return inst(b, MATH,8,shrv_s8, .x=x.id, .y=y.id);
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,8,shr_s8, .x=x.id, .y=y.id);
 }
 V8 weft_shr_u8(Builder* b, V8 x, V8 y) {
-    for (int imm; is_splat(b,y.id,&imm);) {
-        if (imm == 0) { return x; }
-        return inst(b, MATH,8,shri_u8, .x=x.id, .imm=imm);
-    }
-    return inst(b, MATH,8,shrv_u8, .x=x.id, .y=y.id);
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,8,shr_u8, .x=x.id, .y=y.id);
 }
 
 V16 weft_shl_i16(Builder* b, V16 x, V16 y) {
-    for (int imm; is_splat(b,y.id,&imm);) {
-        if (imm == 0) { return x; }
-        return inst(b, MATH,16,shli_i16, .x=x.id, .imm=imm);
-    }
-    return inst(b, MATH,16,shlv_i16, .x=x.id, .y=y.id);
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,16,shl_i16, .x=x.id, .y=y.id);
 }
 V16 weft_shr_s16(Builder* b, V16 x, V16 y) {
-    for (int imm; is_splat(b,y.id,&imm);) {
-        if (imm == 0) { return x; }
-        return inst(b, MATH,16,shri_s16, .x=x.id, .imm=imm);
-    }
-    return inst(b, MATH,16,shrv_s16, .x=x.id, .y=y.id);
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,16,shr_s16, .x=x.id, .y=y.id);
 }
 V16 weft_shr_u16(Builder* b, V16 x, V16 y) {
-    for (int imm; is_splat(b,y.id,&imm);) {
-        if (imm == 0) { return x; }
-        return inst(b, MATH,16,shri_u16, .x=x.id, .imm=imm);
-    }
-    return inst(b, MATH,16,shrv_u16, .x=x.id, .y=y.id);
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,16,shr_u16, .x=x.id, .y=y.id);
 }
 
 V32 weft_shl_i32(Builder* b, V32 x, V32 y) {
-    for (int imm; is_splat(b,y.id,&imm);) {
-        if (imm == 0) { return x; }
-        return inst(b, MATH,32,shli_i32, .x=x.id, .imm=imm);
-    }
-    return inst(b, MATH,32,shlv_i32, .x=x.id, .y=y.id);
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,32,shl_i32, .x=x.id, .y=y.id);
 }
 V32 weft_shr_s32(Builder* b, V32 x, V32 y) {
-    for (int imm; is_splat(b,y.id,&imm);) {
-        if (imm == 0) { return x; }
-        return inst(b, MATH,32,shri_s32, .x=x.id, .imm=imm);
-    }
-    return inst(b, MATH,32,shrv_s32, .x=x.id, .y=y.id);
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,32,shr_s32, .x=x.id, .y=y.id);
 }
 V32 weft_shr_u32(Builder* b, V32 x, V32 y) {
-    for (int imm; is_splat(b,y.id,&imm);) {
-        if (imm == 0) { return x; }
-        return inst(b, MATH,32,shri_u32, .x=x.id, .imm=imm);
-    }
-    return inst(b, MATH,32,shrv_u32, .x=x.id, .y=y.id);
-}
-
-stage(and_8) { uint8_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] & y[i]; next(r+N); }
-stage(bic_8) { uint8_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] &~y[i]; next(r+N); }
-stage( or_8) { uint8_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] | y[i]; next(r+N); }
-stage(xor_8) { uint8_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] ^ y[i]; next(r+N); }
-stage(sel_8) {
-    uint8_t *r=R, *x=v(I->x), *y=v(I->y), *z=v(I->z);
-    each r[i] = ( x[i] & y[i])
-              | (~x[i] & z[i]);
-    next(r+N);
-}
-
-stage(and_16) { uint16_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] & y[i]; next(r+N); }
-stage(bic_16) { uint16_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] &~y[i]; next(r+N); }
-stage( or_16) { uint16_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] | y[i]; next(r+N); }
-stage(xor_16) { uint16_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] ^ y[i]; next(r+N); }
-stage(sel_16) {
-    uint16_t *r=R, *x=v(I->x), *y=v(I->y), *z=v(I->z);
-    each r[i] = ( x[i] & y[i])
-              | (~x[i] & z[i]);
-    next(r+N);
-}
-
-stage(and_32) { uint32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] & y[i]; next(r+N); }
-stage(bic_32) { uint32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] &~y[i]; next(r+N); }
-stage( or_32) { uint32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] | y[i]; next(r+N); }
-stage(xor_32) { uint32_t *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i] ^ y[i]; next(r+N); }
-stage(sel_32) {
-    uint32_t *r=R, *x=v(I->x), *y=v(I->y), *z=v(I->z);
-    each r[i] = ( x[i] & y[i])
-              | (~x[i] & z[i]);
-    next(r+N);
+    for (int imm; is_splat(b,y.id,&imm) && imm == 0;) { return x; }
+    return inst(b, MATH,32,shr_u32, .x=x.id, .y=y.id);
 }
 
 V8 weft_and_8(Builder* b, V8 x, V8 y) {
