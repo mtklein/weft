@@ -6,6 +6,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+// TODO: dead code elimination
+// TODO: loop invariant hoisting
+// TODO: f16
+// TODO: loadN/storeN
+// TODO: full condition coverage in tests
+// TODO: LSAN testing
+// TODO: WASM testing
+// TODO: x86-64 testing
+// TODO: 64-bit types?
+
 #define N 8
 
 #if !defined(__has_attribute)
