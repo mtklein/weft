@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -10,7 +9,6 @@
 // TODO: loop invariant hoisting
 // TODO: loadN/storeN
 // TODO: full condition coverage in tests
-// TODO: 64-bit types?
 
 #define N 8
 
@@ -21,12 +19,13 @@
 typedef weft_V8  V8;
 typedef weft_V16 V16;
 typedef weft_V32 V32;
+typedef weft_V64 V64;
 
 typedef struct PInst {
     void (*fn)(const struct PInst*, int, unsigned, void*, void*, void* const ptr[]);
     int x,y,z,w;
-    int imm;
-    int slot;  // Only used temporarily to translate BInst->PInst, but it's free padding anyway.
+    int : (sizeof(void*) == 4 ? 32 : 0);
+    int64_t imm;
 } PInst;
 
 typedef struct weft_Program {
@@ -37,12 +36,11 @@ typedef struct weft_Program {
 
 typedef struct {
     enum { MATH, SPLAT, UNIFORM, LOAD, STORE, DONE } kind;
-    int  slots;
+    int slots;
     void (*fn         )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
     void (*fn_and_done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    int  x,y,z,w;  // All BInst/Builder value IDs are 1-indexed so 0 can mean unused, N/A, etc.
-    int  imm;
-    int  unused;
+    int x,y,z,w;  // All BInst/Builder value IDs are 1-indexed so 0 can mean unused, N/A, etc.
+    int64_t imm;
 } BInst;
 
 typedef struct weft_Builder {
@@ -149,34 +147,37 @@ static int inst_(Builder* b, BInst inst) {
             && (!inst.w || b->inst[inst.w-1].kind == SPLAT)) {
         PInst constant_prop[6], *p=constant_prop;
 
-        int arg[] = {inst.x,inst.y,inst.z,inst.w};
+        int  arg[] = {inst.x,inst.y,inst.z,inst.w};
+        int slot[] = {     0,     0,     0,     0};
         int slots = 0;
         for (int i = 0; i < 4; i++) {
             if (arg[i]) {
-                *p++ = (PInst){.fn=b->inst[arg[i]-1].fn, .imm=b->inst[arg[i]-1].imm, .slot=slots};
-                slots += b->inst[arg[i]-1].slots;
+                *p++    = (PInst){.fn=b->inst[arg[i]-1].fn, .imm=b->inst[arg[i]-1].imm};
+                slot[i] = slots;
+                slots  += b->inst[arg[i]-1].slots;
             }
         }
         *p++ = (PInst){
             .fn  = inst.fn,
-            .x   = inst.x ? constant_prop[0].slot * N : 0,
-            .y   = inst.y ? constant_prop[1].slot * N : 0,
-            .z   = inst.z ? constant_prop[2].slot * N : 0,
-            .w   = inst.w ? constant_prop[3].slot * N : 0,
+            .x   = inst.x ? slot[0] * N : 0,
+            .y   = inst.y ? slot[1] * N : 0,
+            .z   = inst.z ? slot[2] * N : 0,
+            .w   = inst.w ? slot[3] * N : 0,
             .imm = inst.imm,
         };
         *p++ = (PInst){.fn=done};
 
-        char v[5*4*N];
+        int64_t imm;
+        char v[5*sizeof(imm)*N];
         assert((slots + inst.slots)*N <= (int)sizeof(v));
         constant_prop->fn(constant_prop,0,0,v,v,NULL);
+        memcpy(&imm, v + slots*N, sizeof(imm));
 
-        int imm;
-        memcpy(&imm, v + slots*N, 4);
         switch (inst.slots) {
-            case 1: return weft_splat_8 (b, imm).id;
-            case 2: return weft_splat_16(b, imm).id;
-            case 4: return weft_splat_32(b, imm).id;
+            case 1: return weft_splat_8 (b, (int8_t )imm).id;
+            case 2: return weft_splat_16(b, (int16_t)imm).id;
+            case 4: return weft_splat_32(b, (int32_t)imm).id;
+            case 8: return weft_splat_64(b,          imm).id;
         }
         assert(false);
     }
@@ -218,22 +219,26 @@ Program* weft_compile(Builder* b) {
     }
 
     Program* p = malloc(sizeof(*p) + (size_t)b->inst_len * sizeof(*p->inst));
+    int*  slot = malloc(             (size_t)b->inst_len * sizeof(*slot   ));
+
     p->slots = 0;
     for (int i = 0; i < b->inst_len; i++) {
         BInst inst = b->inst[i];
 
-        p->inst[i].fn = (i == b->inst_len-1 && inst.fn_and_done) ? inst.fn_and_done
-                                                                 : inst.fn;
-        p->inst[i].x    = inst.x ? p->inst[inst.x-1].slot * N : 0;
-        p->inst[i].y    = inst.y ? p->inst[inst.y-1].slot * N : 0;
-        p->inst[i].z    = inst.z ? p->inst[inst.z-1].slot * N : 0;
-        p->inst[i].w    = inst.w ? p->inst[inst.w-1].slot * N : 0;
-        p->inst[i].imm  = inst.imm;
-        p->inst[i].slot = p->slots;
+        p->inst[i] = (PInst) {
+            .fn = (i == b->inst_len-1 && inst.fn_and_done) ? inst.fn_and_done : inst.fn,
+            .x   = inst.x ? slot[inst.x-1] * N : 0,
+            .y   = inst.y ? slot[inst.y-1] * N : 0,
+            .z   = inst.z ? slot[inst.z-1] * N : 0,
+            .w   = inst.w ? slot[inst.w-1] * N : 0,
+            .imm = inst.imm,
+        };
 
+        slot[i]   = p->slots;
         p->slots += inst.slots;
     }
 
+    free(slot);
     free(b->inst);
     free(b->cse);
     free(b);
@@ -244,18 +249,22 @@ Program* weft_compile(Builder* b) {
 stage(splat_8 ) { int8_t  *r=R; each r[i] = (int8_t )I->imm; next(r+N); }
 stage(splat_16) { int16_t *r=R; each r[i] = (int16_t)I->imm; next(r+N); }
 stage(splat_32) { int32_t *r=R; each r[i] = (int32_t)I->imm; next(r+N); }
+stage(splat_64) { int64_t *r=R; each r[i] = (int64_t)I->imm; next(r+N); }
 
-V8  weft_splat_8 (Builder* b, int bits) { return inst(b, SPLAT,8 ,splat_8 , .imm=bits); }
-V16 weft_splat_16(Builder* b, int bits) { return inst(b, SPLAT,16,splat_16, .imm=bits); }
-V32 weft_splat_32(Builder* b, int bits) { return inst(b, SPLAT,32,splat_32, .imm=bits); }
+V8  weft_splat_8 (Builder* b, int8_t  bits) { return inst(b, SPLAT,8 ,splat_8 , .imm=bits); }
+V16 weft_splat_16(Builder* b, int16_t bits) { return inst(b, SPLAT,16,splat_16, .imm=bits); }
+V32 weft_splat_32(Builder* b, int32_t bits) { return inst(b, SPLAT,32,splat_32, .imm=bits); }
+V64 weft_splat_64(Builder* b, int64_t bits) { return inst(b, SPLAT,64,splat_64, .imm=bits); }
 
 stage(uniform_8)  { int8_t  *r=R, u=*(const int8_t* )ptr[I->imm]; each r[i] = u; next(r+N); }
 stage(uniform_16) { int16_t *r=R, u=*(const int16_t*)ptr[I->imm]; each r[i] = u; next(r+N); }
 stage(uniform_32) { int32_t *r=R, u=*(const int32_t*)ptr[I->imm]; each r[i] = u; next(r+N); }
+stage(uniform_64) { int64_t *r=R, u=*(const int64_t*)ptr[I->imm]; each r[i] = u; next(r+N); }
 
 V8  weft_uniform_8 (Builder* b, int ptr) { return inst(b, UNIFORM,8 ,uniform_8 , .imm=ptr); }
 V16 weft_uniform_16(Builder* b, int ptr) { return inst(b, UNIFORM,16,uniform_16, .imm=ptr); }
 V32 weft_uniform_32(Builder* b, int ptr) { return inst(b, UNIFORM,32,uniform_32, .imm=ptr); }
+V64 weft_uniform_64(Builder* b, int ptr) { return inst(b, UNIFORM,64,uniform_64, .imm=ptr); }
 
 stage(load_8) {
     int8_t* r = R;
@@ -275,10 +284,17 @@ stage(load_32) {
          : memcpy(r, (const int32_t*)ptr[I->imm] + off, 4*N);
     next(r+N);
 }
+stage(load_64) {
+    int64_t* r = R;
+    tail ? memcpy(r, (const int64_t*)ptr[I->imm] + off, 8*tail)
+         : memcpy(r, (const int64_t*)ptr[I->imm] + off, 8*N);
+    next(r+N);
+}
 
 V8  weft_load_8 (Builder* b, int ptr) { return inst(b, LOAD,8 ,load_8 , .imm=ptr); }
 V16 weft_load_16(Builder* b, int ptr) { return inst(b, LOAD,16,load_16, .imm=ptr); }
 V32 weft_load_32(Builder* b, int ptr) { return inst(b, LOAD,32,load_32, .imm=ptr); }
+V64 weft_load_64(Builder* b, int ptr) { return inst(b, LOAD,64,load_64, .imm=ptr); }
 
 stage(store_8) {
     tail ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*tail)
@@ -310,6 +326,16 @@ stage(store_32_and_done) {
          : memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*N);
     (void)R;
 }
+stage(store_64) {
+    tail ? memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*tail)
+         : memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*N);
+    next(R);
+}
+stage(store_64_and_done) {
+    tail ? memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*tail)
+         : memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*N);
+    (void)R;
+}
 
 void weft_store_8(Builder* b, int ptr, V8  x) {
     inst(b, STORE,0,store_8 , .fn_and_done=store_8_and_done , .x=x.id, .imm=ptr);
@@ -320,18 +346,19 @@ void weft_store_16(Builder* b, int ptr, V16 x) {
 void weft_store_32(Builder* b, int ptr, V32 x) {
     inst(b, STORE,0,store_32, .fn_and_done=store_32_and_done, .x=x.id, .imm=ptr);
 }
+void weft_store_64(Builder* b, int ptr, V64 x) {
+    inst(b, STORE,0,store_64, .fn_and_done=store_64_and_done, .x=x.id, .imm=ptr);
+}
 
 
-static const int f16_n0 = (int)0x8000,
-                 f16_p1 = (int)0x3c00,
-                 f32_n0 = (int)0x80000000,
-                 f32_p1 = (int)0x3f800000;
+static const int64_t f16_n0 = 0x8000, f32_n0 = 0x80000000, f64_n0 = (int64_t)0x8000000000000000,
+                     f16_p1 = 0x3c00, f32_p1 = 0x3f800000, f64_p1 =          0x3ff0000000000000;
 
-static bool is_splat(Builder* b, int id, int imm) {
+static bool is_splat(Builder* b, int id, int64_t imm) {
     return b->inst[id-1].kind == SPLAT
         && b->inst[id-1].imm  == imm;
 }
-static bool any_splat(Builder* b, int id, int* imm) {
+static bool any_splat(Builder* b, int id, int64_t* imm) {
     *imm = b->inst[id-1].imm;
     return b->inst[id-1].kind == SPLAT;
 }
@@ -394,7 +421,6 @@ stage(sub_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next
 stage(mul_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
 stage(div_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]/y[i]; next(r+N); }
 
-
 V32 weft_add_f32(Builder* b, V32 x, V32 y) {
     sort_commutative(&x.id, &y.id);
     if (is_splat(b,y.id,      0)) { return x; }
@@ -420,12 +446,45 @@ V32 weft_div_f32(Builder* b, V32 x, V32 y) {
     return inst(b, MATH,32, div_f32, .x=x.id, .y=y.id);
 }
 
+stage(add_f64) { double *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
+stage(sub_f64) { double *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
+stage(mul_f64) { double *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
+stage(div_f64) { double *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]/y[i]; next(r+N); }
+
+V64 weft_add_f64(Builder* b, V64 x, V64 y) {
+    sort_commutative(&x.id, &y.id);
+    if (is_splat(b,y.id,      0)) { return x; }
+    if (is_splat(b,y.id, f64_n0)) { return x; }
+    if (is_splat(b,x.id,      0)) { return y; }
+    if (is_splat(b,x.id, f64_n0)) { return y; }
+    return inst(b, MATH,64, add_f64, .x=x.id, .y=y.id);
+}
+V64 weft_sub_f64(Builder* b, V64 x, V64 y) {
+    if (is_splat(b,y.id,      0)) { return x; }
+    if (is_splat(b,y.id, f64_n0)) { return x; }
+    return inst(b, MATH,64, sub_f64, .x=x.id, .y=y.id);
+}
+V64 weft_mul_f64(Builder* b, V64 x, V64 y) {
+    sort_commutative(&x.id, &y.id);
+    // Note: x*0 isn't 0 when x=NaN.
+    if (is_splat(b,y.id, f64_p1)) { return x; }
+    if (is_splat(b,x.id, f64_p1)) { return y; }
+    return inst(b, MATH,64, mul_f64, .x=x.id, .y=y.id);
+}
+V64 weft_div_f64(Builder* b, V64 x, V64 y) {
+    if (is_splat(b,y.id, f64_p1)) { return x; }
+    return inst(b, MATH,64, div_f64, .x=x.id, .y=y.id);
+}
+
 stage( ceil_f16) { __fp16 *r=R, *x=v(I->x); each r[i] = (__fp16) ceilf((float)x[i]); next(r+N); }
 stage(floor_f16) { __fp16 *r=R, *x=v(I->x); each r[i] = (__fp16)floorf((float)x[i]); next(r+N); }
 stage( sqrt_f16) { __fp16 *r=R, *x=v(I->x); each r[i] = (__fp16) sqrtf((float)x[i]); next(r+N); }
 stage( ceil_f32) { float  *r=R, *x=v(I->x); each r[i] =          ceilf(       x[i]); next(r+N); }
 stage(floor_f32) { float  *r=R, *x=v(I->x); each r[i] =         floorf(       x[i]); next(r+N); }
 stage( sqrt_f32) { float  *r=R, *x=v(I->x); each r[i] =          sqrtf(       x[i]); next(r+N); }
+stage( ceil_f64) { double *r=R, *x=v(I->x); each r[i] =          ceil (       x[i]); next(r+N); }
+stage(floor_f64) { double *r=R, *x=v(I->x); each r[i] =         floor (       x[i]); next(r+N); }
+stage( sqrt_f64) { double *r=R, *x=v(I->x); each r[i] =          sqrt (       x[i]); next(r+N); }
 
 V16  weft_ceil_f16(Builder* b, V16 x) { return inst(b, MATH,16, ceil_f16, .x=x.id); }
 V16 weft_floor_f16(Builder* b, V16 x) { return inst(b, MATH,16,floor_f16, .x=x.id); }
@@ -433,6 +492,9 @@ V16  weft_sqrt_f16(Builder* b, V16 x) { return inst(b, MATH,16, sqrt_f16, .x=x.i
 V32  weft_ceil_f32(Builder* b, V32 x) { return inst(b, MATH,32, ceil_f32, .x=x.id); }
 V32 weft_floor_f32(Builder* b, V32 x) { return inst(b, MATH,32,floor_f32, .x=x.id); }
 V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.id); }
+V64  weft_ceil_f64(Builder* b, V64 x) { return inst(b, MATH,64, ceil_f64, .x=x.id); }
+V64 weft_floor_f64(Builder* b, V64 x) { return inst(b, MATH,64,floor_f64, .x=x.id); }
+V64  weft_sqrt_f64(Builder* b, V64 x) { return inst(b, MATH,64, sqrt_f64, .x=x.id); }
 
 #define INT_STAGES(B,S,U) \
     stage(add_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] +  y[i] ; next(r+N);}  \
@@ -474,21 +536,21 @@ V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.i
     }                                                                                            \
     V##B weft_shl_i##B(Builder* b, V##B x, V##B y) {                                             \
         if (is_splat(b,y.id,0)) { return x; }                                                    \
-        for (int imm; any_splat(b,y.id,&imm);) {                                                 \
+        for (int64_t imm; any_splat(b,y.id,&imm);) {                                             \
             return inst(b, MATH,B,shli_i##B, .x=x.id, .imm=imm);                                 \
         }                                                                                        \
         return inst(b, MATH,B,shlv_i##B, .x=x.id, .y=y.id);                                      \
     }                                                                                            \
     V##B weft_shr_s##B(Builder* b, V##B x, V##B y) {                                             \
         if (is_splat(b,y.id,0)) { return x; }                                                    \
-        for (int imm; any_splat(b,y.id,&imm);) {                                                 \
+        for (int64_t imm; any_splat(b,y.id,&imm);) {                                             \
             return inst(b, MATH,B,shri_s##B, .x=x.id, .imm=imm);                                 \
         }                                                                                        \
         return inst(b, MATH,B,shrv_s##B, .x=x.id, .y=y.id);                                      \
     }                                                                                            \
     V##B weft_shr_u##B(Builder* b, V##B x, V##B y) {                                             \
         if (is_splat(b,y.id,0)) { return x; }                                                    \
-        for (int imm; any_splat(b,y.id,&imm);) {                                                 \
+        for (int64_t imm; any_splat(b,y.id,&imm);) {                                             \
             return inst(b, MATH,B,shri_u##B, .x=x.id, .imm=imm);                                 \
         }                                                                                        \
         return inst(b, MATH,B,shrv_u##B, .x=x.id, .y=y.id);                                      \
@@ -529,3 +591,4 @@ V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.i
 INT_STAGES( 8, int8_t, uint8_t)
 INT_STAGES(16,int16_t,uint16_t)
 INT_STAGES(32,int32_t,uint32_t)
+INT_STAGES(64,int64_t,uint64_t)
