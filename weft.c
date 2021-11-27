@@ -82,7 +82,7 @@ static int lookup_cse(Builder* b, int hash, const BInst* inst) {
     return 0;
 }
 
-static void just_insert(Builder* b, int id, int hash) {
+static void insert_cse(Builder* b, int id, int hash) {
     assert(b->cse_len < b->cse_cap);
     int i = hash & (b->cse_cap-1);
     for (int n = b->cse_cap; n --> 0;) {
@@ -95,23 +95,6 @@ static void just_insert(Builder* b, int id, int hash) {
         i = (i+1) & (b->cse_cap-1);
     }
     assert(false);
-}
-
-static void insert_cse(Builder* b, int id, int hash) {
-    if (b->cse_len >= b->cse_cap*3/4) {
-        Builder grown = *b;
-        grown.cse_len = 0;
-        grown.cse_cap = b->cse_cap ? b->cse_cap*2 : 1;
-        grown.cse     = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
-        for (int i = 0; i < b->cse_cap; i++) {
-            if (b->cse[i].id) {
-                just_insert(&grown, b->cse[i].id, b->cse[i].hash);
-            }
-        }
-        free(b->cse);
-        *b = grown;
-    }
-    just_insert(b,id,hash);
 }
 
 // Each stage writes to R ("result") and calls next() with R incremented past its writes.
@@ -191,6 +174,19 @@ static int inst_(Builder* b, BInst inst) {
 
     b->inst[id-1] = inst;
     if (inst.kind <= UNIFORM) {
+        if (b->cse_len >= b->cse_cap*3/4) {
+            Builder grown = *b;
+            grown.cse_len = 0;
+            grown.cse_cap = b->cse_cap ? b->cse_cap*2 : 1;
+            grown.cse     = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
+            for (int i = 0; i < b->cse_cap; i++) {
+                if (b->cse[i].id) {
+                    insert_cse(&grown, b->cse[i].id, b->cse[i].hash);
+                }
+            }
+            free(b->cse);
+            *b = grown;
+        }
         insert_cse(b,id,hash);
     }
     return id;
