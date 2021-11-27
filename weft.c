@@ -116,22 +116,16 @@ stage(done) {
     (void)ptr;
 }
 
-static int inst_(Builder* b, BInst inst) {
-    const int hash = (int)fnv1a(&inst, sizeof(inst));
+static int constant_prop(Builder* b, const BInst* inst) {
+    if (inst->kind == MATH
+            && (!inst->x || b->inst[inst->x-1].kind == SPLAT)
+            && (!inst->y || b->inst[inst->y-1].kind == SPLAT)
+            && (!inst->z || b->inst[inst->z-1].kind == SPLAT)
+            && (!inst->w || b->inst[inst->w-1].kind == SPLAT)) {
+        PInst program[6], *p=program;
 
-    for (int id = lookup_cse(b, hash, &inst); id;) {
-        return id;
-    }
-
-    if (inst.kind == MATH
-            && (!inst.x || b->inst[inst.x-1].kind == SPLAT)
-            && (!inst.y || b->inst[inst.y-1].kind == SPLAT)
-            && (!inst.z || b->inst[inst.z-1].kind == SPLAT)
-            && (!inst.w || b->inst[inst.w-1].kind == SPLAT)) {
-        PInst constant_prop[6], *p=constant_prop;
-
-        int  arg[] = {inst.x,inst.y,inst.z,inst.w};
-        int slot[] = {     0,     0,     0,     0};
+        int  arg[] = {inst->x,inst->y,inst->z,inst->w};
+        int slot[] = {      0,      0,      0,      0};
         int slots = 0;
         for (int i = 0; i < 4; i++) {
             if (arg[i]) {
@@ -141,28 +135,39 @@ static int inst_(Builder* b, BInst inst) {
             }
         }
         *p++ = (PInst){
-            .fn  = inst.fn,
-            .x   = inst.x ? slot[0] * N : 0,
-            .y   = inst.y ? slot[1] * N : 0,
-            .z   = inst.z ? slot[2] * N : 0,
-            .w   = inst.w ? slot[3] * N : 0,
-            .imm = inst.imm,
+            .fn  = inst->fn,
+            .x   = inst->x ? slot[0] * N : 0,
+            .y   = inst->y ? slot[1] * N : 0,
+            .z   = inst->z ? slot[2] * N : 0,
+            .w   = inst->w ? slot[3] * N : 0,
+            .imm = inst->imm,
         };
         *p++ = (PInst){.fn=done};
 
         int64_t imm;
         char v[5*sizeof(imm)*N];
-        assert((slots + inst.slots)*N <= (int)sizeof(v));
-        constant_prop->fn(constant_prop,0,0,v,v,NULL);
+        assert((slots + inst->slots)*N <= (int)sizeof(v));
+        program->fn(program,0,0,v,v,NULL);
         memcpy(&imm, v + slots*N, sizeof(imm));
 
-        switch (inst.slots) {
+        switch (inst->slots) {
             case 1: return weft_splat_8 (b, (int8_t )imm).id;
             case 2: return weft_splat_16(b, (int16_t)imm).id;
             case 4: return weft_splat_32(b, (int32_t)imm).id;
             case 8: return weft_splat_64(b,          imm).id;
         }
-        assert(false);
+    }
+    return 0;
+}
+
+static int inst_(Builder* b, BInst inst) {
+    const int hash = (int)fnv1a(&inst, sizeof(inst));
+
+    for (int id = lookup_cse(b, hash, &inst); id;) {
+        return id;
+    }
+    for (int id = constant_prop(b, &inst); id;) {
+        return id;
     }
 
     const int id = ++b->inst_len;
@@ -171,8 +176,8 @@ static int inst_(Builder* b, BInst inst) {
         b->inst_cap = b->inst_cap ? 2*b->inst_cap : 1;
         b->inst = realloc(b->inst, (size_t)b->inst_cap * sizeof(*b->inst));
     }
-
     b->inst[id-1] = inst;
+
     if (inst.kind <= UNIFORM) {
         if (b->cse_len >= b->cse_cap*3/4) {
             Builder grown = *b;
