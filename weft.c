@@ -68,7 +68,7 @@ static uint32_t fnv1a(const void* vp, size_t len) {
     return hash;
 }
 
-static int cse_lookup_id(Builder* b, int hash, const BInst* inst) {
+static int lookup_cse(Builder* b, int hash, const BInst* inst) {
     int i = hash & (b->cse_cap-1);
     for (int n = b->cse_cap; n --> 0;) {
         if (b->cse[i].id == 0) {
@@ -82,7 +82,7 @@ static int cse_lookup_id(Builder* b, int hash, const BInst* inst) {
     return 0;
 }
 
-static void cse_just_insert(Builder* b, int id, int hash) {
+static void just_insert(Builder* b, int id, int hash) {
     assert(b->cse_len < b->cse_cap);
     int i = hash & (b->cse_cap-1);
     for (int n = b->cse_cap; n --> 0;) {
@@ -97,7 +97,7 @@ static void cse_just_insert(Builder* b, int id, int hash) {
     assert(false);
 }
 
-static void cse_insert(Builder* b, int id, int hash) {
+static void insert_cse(Builder* b, int id, int hash) {
     if (b->cse_len >= b->cse_cap*3/4) {
         Builder grown = *b;
         grown.cse_len = 0;
@@ -105,13 +105,13 @@ static void cse_insert(Builder* b, int id, int hash) {
         grown.cse     = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
         for (int i = 0; i < b->cse_cap; i++) {
             if (b->cse[i].id) {
-                cse_just_insert(&grown, b->cse[i].id, b->cse[i].hash);
+                just_insert(&grown, b->cse[i].id, b->cse[i].hash);
             }
         }
         free(b->cse);
         *b = grown;
     }
-    cse_just_insert(b,id,hash);
+    just_insert(b,id,hash);
 }
 
 // Each stage writes to R ("result") and calls next() with R incremented past its writes.
@@ -136,7 +136,7 @@ stage(done) {
 static int inst_(Builder* b, BInst inst) {
     int hash = (int)fnv1a(&inst, sizeof(inst));
 
-    for (int id = cse_lookup_id(b, hash, &inst); id;) {
+    for (int id = lookup_cse(b, hash, &inst); id;) {
         return id;
     }
 
@@ -191,7 +191,7 @@ static int inst_(Builder* b, BInst inst) {
 
     b->inst[id-1] = inst;
     if (inst.kind <= UNIFORM) {
-        cse_insert(b,id,hash);
+        insert_cse(b,id,hash);
     }
     return id;
 }
