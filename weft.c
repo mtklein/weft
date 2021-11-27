@@ -117,7 +117,7 @@ stage(done) {
 }
 
 static int inst_(Builder* b, BInst inst) {
-    int hash = (int)fnv1a(&inst, sizeof(inst));
+    const int hash = (int)fnv1a(&inst, sizeof(inst));
 
     for (int id = lookup_cse(b, hash, &inst); id;) {
         return id;
@@ -165,7 +165,7 @@ static int inst_(Builder* b, BInst inst) {
         assert(false);
     }
 
-    int id = ++b->inst_len;
+    const int id = ++b->inst_len;
 
     if (b->inst_cap < b->inst_len) {
         b->inst_cap = b->inst_cap ? 2*b->inst_cap : 1;
@@ -219,7 +219,7 @@ Program* weft_compile(Builder* b) {
 
     p->slots = 0;
     for (int i = 0; i < b->inst_len; i++) {
-        BInst inst = b->inst[i];
+        const BInst inst = b->inst[i];
 
         p->inst[i] = (PInst) {
             .fn = (i == b->inst_len-1 && inst.fn_and_done) ? inst.fn_and_done : inst.fn,
