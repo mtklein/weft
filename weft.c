@@ -9,8 +9,6 @@
     #define  __has_attribute(x) 0
 #endif
 
-// TODO: dead code elimination
-// TODO: loop invariant hoisting
 // TODO: loadN/storeN
 // TODO: full condition coverage in tests
 
@@ -31,6 +29,8 @@ typedef struct PInst {
 typedef struct weft_Program {
     int   slots;
     int   unused;
+    int   loop_inst;
+    int   loop_slot;
     PInst inst[];
 } Program;
 
@@ -196,46 +196,89 @@ static int inst_(Builder* b, BInst inst) {
 #define inst(b,kind,bits,fn,...) (V##bits){inst_(b, (BInst){kind,bits/8,fn, __VA_ARGS__})}
 
 void weft_run(const weft_Program* p, int n, void* const ptr[]) {
-    void* v = malloc(N * (size_t)p->slots);
+    void* V = malloc(N * (size_t)p->slots);
 
-    const PInst* inst = p->inst;
+    const PInst *inst = p->inst,
+                *loop = p->inst + p->loop_inst;
+    void *R = V,
+         *L = (char*)V + (N * p->loop_slot);
+
     for (int off = 0; off+N <= n; off += N) {
-        inst->fn(inst,off,0,v,v,ptr);
+        inst->fn(inst,off,0,V,R,ptr);
+        inst = loop;
+        R    = L;
     }
     for (unsigned tail = (unsigned)(n - n/N*N); tail; ) {
-        inst->fn(inst,n/N*N,tail,v,v,ptr);
+        inst->fn(inst,n/N*N,tail,V,R,ptr);
         break;
     }
 
-    free(v);
+    free(V);
 }
 
 Program* weft_compile(Builder* b) {
     if (b->inst_len == 0 || !b->inst[b->inst_len-1].fn_and_done) {
-        inst_(b, (BInst){DONE, .fn=done});
+        inst_(b, (BInst){DONE, .fn_and_done=done});
     }
 
-    Program* p = malloc(sizeof(*p) + (size_t)b->inst_len * sizeof(*p->inst));
-    int*  slot = malloc(             (size_t)b->inst_len * sizeof(*slot   ));
+    union {
+        struct { bool live, loop_dependent; };
+        int slot;
+    } *meta = calloc((size_t)b->inst_len, sizeof *meta);
 
-    p->slots = 0;
+    int live_insts = 0;
+    for (int i = b->inst_len; i --> 0;) {
+        const BInst inst = b->inst[i];
+        if (inst.kind >= STORE) {
+            meta[i].live = true;
+        }
+        if (meta[i].live) {
+            live_insts++;
+            if (inst.x) { meta[inst.x-1].live = true; }
+            if (inst.y) { meta[inst.y-1].live = true; }
+            if (inst.z) { meta[inst.z-1].live = true; }
+            if (inst.w) { meta[inst.w-1].live = true; }
+        }
+    }
+
     for (int i = 0; i < b->inst_len; i++) {
         const BInst inst = b->inst[i];
-
-        p->inst[i] = (PInst) {
-            .fn = (i == b->inst_len-1 && inst.fn_and_done) ? inst.fn_and_done : inst.fn,
-            .x   = inst.x ? slot[inst.x-1] * N : 0,
-            .y   = inst.y ? slot[inst.y-1] * N : 0,
-            .z   = inst.z ? slot[inst.z-1] * N : 0,
-            .w   = inst.w ? slot[inst.w-1] * N : 0,
-            .imm = inst.imm,
-        };
-
-        slot[i]   = p->slots;
-        p->slots += inst.slots;
+        meta[i].loop_dependent = inst.kind >= LOAD
+                              || (inst.x && meta[inst.x-1].loop_dependent)
+                              || (inst.y && meta[inst.y-1].loop_dependent)
+                              || (inst.z && meta[inst.z-1].loop_dependent)
+                              || (inst.w && meta[inst.w-1].loop_dependent);
     }
 
-    free(slot);
+    Program* p = malloc(sizeof(*p) + (size_t)live_insts * sizeof(*p->inst));
+    p->slots   = 0;
+    int insts  = 0;
+
+    for (int loop_dependent = 0; loop_dependent < 2; loop_dependent++) {
+        if (loop_dependent) {
+            p->loop_inst = insts;
+            p->loop_slot = p->slots;
+        }
+        for (int i = 0; i < b->inst_len; i++) {
+            if (meta[i].live && meta[i].loop_dependent == loop_dependent) {
+                const BInst inst = b->inst[i];
+                p->inst[insts] = (PInst) {
+                    .fn  = (insts == live_insts-1) ? inst.fn_and_done : inst.fn,
+                    .x   = inst.x ? meta[inst.x-1].slot * N : 0,
+                    .y   = inst.y ? meta[inst.y-1].slot * N : 0,
+                    .z   = inst.z ? meta[inst.z-1].slot * N : 0,
+                    .w   = inst.w ? meta[inst.w-1].slot * N : 0,
+                    .imm = inst.imm,
+                };
+                insts++;
+                meta[i].slot = p->slots;
+                p->slots += inst.slots;
+            }
+        }
+    }
+    assert(insts == live_insts);
+
+    free(meta);
     free(b->inst);
     free(b->cse);
     free(b);
