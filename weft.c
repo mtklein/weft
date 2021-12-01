@@ -263,15 +263,14 @@ Program* weft_compile(Builder* b) {
         for (int i = 0; i < b->inst_len; i++) {
             if (meta[i].live && meta[i].loop_dependent == loop_dependent) {
                 const BInst inst = b->inst[i];
-                p->inst[insts] = (PInst) {
-                    .fn  = (insts == live_insts-1) ? inst.fn_and_done : inst.fn,
+                p->inst[insts++] = (PInst) {
+                    .fn  = (i == b->inst_len-1) ? inst.fn_and_done : inst.fn,
                     .x   = inst.x ? meta[inst.x-1].slot * N : 0,
                     .y   = inst.y ? meta[inst.y-1].slot * N : 0,
                     .z   = inst.z ? meta[inst.z-1].slot * N : 0,
                     .w   = inst.w ? meta[inst.w-1].slot * N : 0,
                     .imm = inst.imm,
                 };
-                insts++;
                 meta[i].slot = p->slots;
                 p->slots += inst.slots;
             }
