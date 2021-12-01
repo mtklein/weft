@@ -10,6 +10,7 @@
 #endif
 
 // TODO: loadN/storeN
+// TODO: widen/narrow/cast
 // TODO: full condition coverage in tests
 
 #define N 8
