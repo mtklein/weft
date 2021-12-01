@@ -199,15 +199,13 @@ static int inst_(Builder* b, BInst inst) {
 void weft_run(const weft_Program* p, int n, void* const ptr[]) {
     void* V = malloc(N * (size_t)p->slots);
 
-    const PInst *inst = p->inst,
-                *loop = p->inst + p->loop_inst;
-    void *R = V,
-         *L = (char*)V + (N * p->loop_slot);
+    void* R = V;
+    const PInst* inst = p->inst;
 
     for (int off = 0; off+N <= n; off += N) {
         inst->fn(inst,off,0,V,R,ptr);
-        inst = loop;
-        R    = L;
+        inst = p->inst + p->loop_inst;
+        R    = (char*)V + (N * p->loop_slot);
     }
     for (unsigned tail = (unsigned)(n - n/N*N); tail; ) {
         inst->fn(inst,n/N*N,tail,V,R,ptr);
