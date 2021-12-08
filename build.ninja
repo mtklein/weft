@@ -11,7 +11,7 @@ rule link
 rule run
     command = $runtime ./$in > $out
 
-brew         = ~/brew/opt/llvm/bin/clang
+brew         = /opt/homebrew/opt/llvm/bin/clang
 clang_cflags = -fcolor-diagnostics -Xclang -nostdsysteminc -Weverything
 
 opt    = clang  $clang_cflags -O2
