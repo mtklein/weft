@@ -1,7 +1,7 @@
 builddir = out
 
 rule compile
-    command = $cc -MD -MF $out.d -g -Werror -c $in -o $out
+    command = $cc -MD -MF $out.d -std=c11 -g -Werror -c $in -o $out
     depfile = $out.d
     deps    = gcc
 
