@@ -5,10 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if !defined(__has_attribute)
-    #define  __has_attribute(x) 0
-#endif
-
 // TODO: loadN/storeN
 // TODO: widen/narrow/cast
 // TODO: full condition coverage in tests
@@ -57,7 +53,7 @@ Builder* weft_builder(void) {
     return calloc(1, sizeof(Builder));
 }
 
-#if __has_attribute(no_sanitize)
+#if defined(__clang__)
     __attribute__((no_sanitize("unsigned-integer-overflow")))
 #endif
 static uint32_t fnv1a(const void* vp, size_t len) {

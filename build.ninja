@@ -20,6 +20,7 @@ x86_64 = clang  $clang_cflags -O2 -arch x86_64 -momit-leaf-frame-pointer
 xsan   = clang  $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
 lsan   = $brew  $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
 wasm   = zig cc $clang_cflags -target wasm32-wasi
+gcc    = /opt/homebrew/bin/gcc-11 -fdiagnostics-color
 
 build out/opt/weft.o: compile weft.c
     cc = $opt
@@ -75,3 +76,11 @@ build out/wasm/test: link out/wasm/weft.o out/wasm/test.o
     cc = $wasm
 build out/wasm/test.ok: run out/wasm/test
     runtime = wasmtime
+
+build out/gcc/weft.o: compile weft.c
+    cc = $gcc
+build out/gcc/test.o: compile test.c
+    cc = $gcc
+build out/gcc/test: link out/gcc/weft.o out/gcc/test.o
+    cc = $gcc
+build out/gcc/test.ok: run out/gcc/test
