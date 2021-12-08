@@ -53,14 +53,11 @@ Builder* weft_builder(void) {
     return calloc(1, sizeof(Builder));
 }
 
-#if defined(__clang__)
-    __attribute__((no_sanitize("unsigned-integer-overflow")))
-#endif
 static uint32_t fnv1a(const void* vp, size_t len) {
     uint32_t hash = 0x811c9dc5;
-    for (const uint8_t* p = vp; len --> 0;) {
+    for (const uint8_t *p = vp, *end=p+len; p != end;) {
         hash ^= *p++;
-        hash *= 0x01000193;
+        (void)__builtin_mul_overflow(hash, 0x01000193, &hash);
     }
     return hash;
 }
