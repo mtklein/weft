@@ -8,6 +8,7 @@
 // TODO: loadN/storeN
 // TODO: widen/narrow/cast
 // TODO: full condition coverage in tests
+// TODO: test GCC with -march=armv8.2-a+fp16
 
 #define N 8
 
