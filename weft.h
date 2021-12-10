@@ -130,3 +130,23 @@ weft_V32 weft_sqrt_f32 (weft_Builder*, weft_V32);
 weft_V64 weft_ceil_f64 (weft_Builder*, weft_V64);
 weft_V64 weft_floor_f64(weft_Builder*, weft_V64);
 weft_V64 weft_sqrt_f64 (weft_Builder*, weft_V64);
+
+weft_V8  weft_narrow_i16(weft_Builder*, weft_V16);
+weft_V16 weft_narrow_i32(weft_Builder*, weft_V32);
+weft_V32 weft_narrow_i64(weft_Builder*, weft_V64);
+
+weft_V16 weft_widen_s8 (weft_Builder*, weft_V8);
+weft_V32 weft_widen_s16(weft_Builder*, weft_V16);
+weft_V64 weft_widen_s32(weft_Builder*, weft_V32);
+
+weft_V16 weft_widen_u8 (weft_Builder*, weft_V8);
+weft_V32 weft_widen_u16(weft_Builder*, weft_V16);
+weft_V64 weft_widen_u32(weft_Builder*, weft_V32);
+
+weft_V16 weft_cast_f16(weft_Builder*, weft_V16);
+weft_V32 weft_cast_f32(weft_Builder*, weft_V32);
+weft_V64 weft_cast_f64(weft_Builder*, weft_V64);
+
+weft_V16 weft_cast_s16(weft_Builder*, weft_V16);
+weft_V32 weft_cast_s32(weft_Builder*, weft_V32);
+weft_V64 weft_cast_s64(weft_Builder*, weft_V64);
