@@ -11,9 +11,6 @@ rule link
 rule run
     command = $runtime ./$in > $out
 
-rule collect_coverage
-    command = env LLVM_PROFILE_FILE=$out ./$in
-
 rule index_coverage
     command = /opt/homebrew/opt/llvm/bin/llvm-profdata merge $in -o $out
 
@@ -102,6 +99,7 @@ build out/cov/test.o: compile test.c
     cc = $cov
 build out/cov/test: link out/cov/weft.o out/cov/test.o
     cc = $cov
-build out/cov/test.profraw: collect_coverage out/cov/test
+build out/cov/test.ok | out/cov/test.profraw: run out/cov/test
+    runtime = env LLVM_PROFILE_FILE=out/cov/test.profraw
 build out/cov/test.profdata:  index_coverage out/cov/test.profraw
 build weft.c.coverage:       report_coverage out/cov/test.profdata out/cov/test weft.c
