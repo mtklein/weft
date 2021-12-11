@@ -14,9 +14,12 @@ rule run
 rule index_coverage
     command = /opt/homebrew/opt/llvm/bin/llvm-profdata merge $in -o $out
 
-rule report_coverage
+rule coverage_summary
     command = /opt/homebrew/opt/llvm/bin/llvm-cov report -show-functions -instr-profile $in $
             | tail -n +2 > $out
+
+rule coverage_details
+    command = /opt/homebrew/opt/llvm/bin/llvm-cov show --use-color --instr-profile $in > $out
 
 brew         = /opt/homebrew/opt/llvm/bin/clang
 clang_cflags = -fcolor-diagnostics -Xclang -nostdsysteminc -Weverything
@@ -102,4 +105,5 @@ build out/cov/test: link out/cov/weft.o out/cov/test.o
 build out/cov/test.ok | out/cov/test.profraw: run out/cov/test
     runtime = env LLVM_PROFILE_FILE=out/cov/test.profraw
 build out/cov/test.profdata:  index_coverage out/cov/test.profraw
-build weft.c.coverage:       report_coverage out/cov/test.profdata out/cov/test weft.c
+build weft.c.summary:       coverage_summary out/cov/test.profdata out/cov/test weft.c
+build weft.c.details:       coverage_details out/cov/test.profdata out/cov/test weft.c

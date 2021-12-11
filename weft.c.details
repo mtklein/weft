@@ -1,0 +1,934 @@
+    1|       |#include "weft.h"
+    2|       |#include <assert.h>
+    3|       |#include <math.h>
+    4|       |#include <stdbool.h>
+    5|       |#include <stdlib.h>
+    6|       |#include <string.h>
+    7|       |
+    8|       |// TODO: loadN/storeN
+    9|       |// TODO: full condition coverage in tests
+   10|       |// TODO: test GCC with -march=armv8.2-a+fp16
+   11|       |
+   12|    566|#define N 8
+   13|       |
+   14|       |typedef weft_V8  V8;
+   15|       |typedef weft_V16 V16;
+   16|       |typedef weft_V32 V32;
+   17|       |typedef weft_V64 V64;
+   18|       |
+   19|       |typedef struct PInst {
+   20|       |    void (*fn)(const struct PInst*, int, unsigned, void*, void*, void* const ptr[]);
+   21|       |    int x,y,z,w;
+   22|       |    int : (sizeof(void*) == 4 ? 32 : 0);
+   23|       |    int64_t imm;
+   24|       |} PInst;
+   25|       |
+   26|       |typedef struct weft_Program {
+   27|       |    int   slots;
+   28|       |    int   unused;
+   29|       |    int   loop_inst;
+   30|       |    int   loop_slot;
+   31|       |    PInst inst[];
+   32|       |} Program;
+   33|       |
+   34|       |typedef struct {
+   35|       |    enum { MATH, SPLAT, UNIFORM, LOAD, STORE, DONE } kind;
+   36|       |    int slots;
+   37|       |    void (*fn         )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
+   38|       |    void (*fn_and_done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
+   39|       |    int x,y,z,w;  // All BInst/Builder value IDs are 1-indexed so 0 can mean unused, N/A, etc.
+   40|       |    int64_t imm;
+   41|       |} BInst;
+   42|       |
+   43|       |typedef struct weft_Builder {
+   44|       |    BInst                 *inst;
+   45|       |    int                    inst_len;
+   46|       |    int                    inst_cap;
+   47|       |    struct {int id,hash;} *cse;
+   48|       |    int                    cse_len;
+   49|       |    int                    cse_cap;
+   50|       |} Builder;
+   51|       |
+   52|     17|Builder* weft_builder(void) {
+   53|     17|    return calloc(1, sizeof(Builder));
+   54|     17|}
+   55|       |
+   56|     60|static uint32_t fnv1a(const void* vp, size_t len) {
+   57|     60|    uint32_t hash = 0x811c9dc5;
+   58|  [0;35m2.94k[0m|    for (const uint8_t *p = vp, *end=p+len; p != end;) {
+   59|  2.88k|        hash ^= *p++;
+   60|  2.88k|        (void)__builtin_mul_overflow(hash, 0x01000193, &hash);
+   61|  2.88k|    }
+   62|     60|    return hash;
+   63|     60|}
+   64|       |
+   65|     60|static int lookup_cse(Builder* b, int hash, const BInst* inst) {
+   66|    [0;35m105[0m|    for (int i = hash & (b->cse_cap-1), n = b->cse_cap; n --> 0;) {
+   67|     [0;35m57[0m|        if (b->cse[i].id == 0) {
+   68|      9|            break;
+   69|      9|        }
+   70|     [0;35m48[0m|        if (b->cse[i].hash == hash && !memcmp(inst, b->inst + b->cse[i].id-1, sizeof(*inst))) {
+   71|      3|            return b->cse[i].id;
+   72|      3|        }
+   73|     45|        i = (i+1) & (b->cse_cap-1);
+   74|     45|    }
+   75|     57|    return 0;
+   76|     60|}
+   77|       |
+   78|     47|static void insert_cse(Builder* b, int id, int hash) {
+   79|     47|    assert(b->cse_len < b->cse_cap);
+   80|     [0;35m53[0m|    for (int i = hash & (b->cse_cap-1), n = b->cse_cap; n --> 0;) {
+   81|     [0;35m53[0m|        if (b->cse[i].id == 0) {
+   82|     47|            b->cse[i].id   = id;
+   83|     47|            b->cse[i].hash = hash;
+   84|     47|            b->cse_len++;
+   85|     47|            return;
+   86|     47|        }
+   87|      6|        i = (i+1) & (b->cse_cap-1);
+   88|      6|    }
+   89|      0|    assert[0;41m(false);[0m
+   90|      0|[0;41m}[0m
+   91|       |
+   92|       |// Each stage writes to R ("result") and calls next() with R incremented past its writes.
+   93|       |// Argument x starts at v(I->x); ditto for y,z,w.
+   94|       |// off tracks weft_run()'s progress [0,n), for offseting varying pointers.
+   95|       |// When operating on full N-sized chunks, tail is 0; tail is k for the final k<N sized chunk.
+   96|       |#define stage(name) static void name(const PInst* I, int off, unsigned tail, \
+   97|       |                                     void* restrict V, void* restrict R, void* const ptr[])
+   98|    [0;35m351[0m|#define each    for (int i = 0; i < N; i++)
+   99|     63|#define next(R) I[1].fn(I+1,off,tail,V,R,ptr); return
+  100|     49|#define v(arg)  (void*)( (char*)V + arg )
+  101|       |
+  102|      6|stage(done) {
+  103|      6|    (void)I;
+  104|      6|    (void)off;
+  105|      6|    (void)tail;
+  106|      6|    (void)V;
+  107|      6|    (void)R;
+  108|      6|    (void)ptr;
+  109|      6|}
+  110|       |
+  111|     57|static int constant_prop(Builder* b, const BInst* inst) {
+  112|     57|    if (inst->kind == MATH
+  113|     [0;35m57[0m|            && (!inst->x || b->inst[inst->x-1].kind == SPLAT)
+  114|     [0;35m57[0m|            && (!inst->y || b->inst[inst->y-1].kind == SPLAT)
+  115|     [0;35m57[0m|            && (!inst->z || [0;41mb->inst[inst->z-1].kind == SPLAT[0m)
+  116|     [0;35m57[0m|            && (!inst->w || [0;41mb->inst[inst->w-1].kind == SPLAT[0m)) {
+  117|      2|        PInst program[6], *p=program;
+  118|       |
+  119|      2|        const int* arg = &inst->x;
+  120|      2|        int slot[4], slots = 0;
+  121|     [0;35m10[0m|        for (int i = 0; i < 4; i++) {
+  122|      [0;35m8[0m|            if (arg[i]) {
+  123|      3|                *p++    = (PInst){.fn=b->inst[arg[i]-1].fn, .imm=b->inst[arg[i]-1].imm};
+  124|      3|                slot[i] = slots;
+  125|      3|                slots  += b->inst[arg[i]-1].slots;
+  126|      3|            }
+  127|      8|        }
+  128|      2|        *p++ = (PInst){
+  129|      2|            .fn  = inst->fn,
+  130|      [0;35m2[0m|            .x   = inst->x ? slot[0] * N : [0;41m0[0m,
+  131|      [0;35m2[0m|            .y   = inst->y ? slot[1] * N : 0,
+  132|      [0;35m2[0m|            .z   = inst->z ? [0;41mslot[2] * [0m[0;41mN[0m : 0,
+  133|      [0;35m2[0m|            .w   = inst->w ? [0;41mslot[3] * [0m[0;41mN[0m : 0,
+  134|      2|            .imm = inst->imm,
+  135|      2|        };
+  136|      2|        *p++ = (PInst){.fn=done};
+  137|       |
+  138|      2|        int64_t imm;
+  139|      2|        char v[5*sizeof(imm)*N];
+  140|      2|        assert((slots + inst->slots)*N <= (int)sizeof(v));
+  141|      0|        program->fn(program,0,0,v,v,NULL);
+  142|      2|        memcpy(&imm, v + slots*N, sizeof(imm));
+  143|       |
+  144|      2|        switch (inst->slots) {
+  145|      0|            [0;41mcase 1: return weft_splat_8 (b, (int8_t )imm).id[0m[0;41m;[0m
+  146|      0|            [0;41mcase 2: return weft_splat_16(b, (int16_t)imm).id[0m[0;41m;[0m
+  147|      2|            case 4: return weft_splat_32(b, (int32_t)imm).id;
+  148|      0|            [0;41mcase 8: return weft_splat_64(b,          imm).id[0m;
+  149|      2|        }
+  150|      2|    }
+  151|     55|    return 0;
+  152|     57|}
+  153|       |
+  154|     60|static int inst_(Builder* b, BInst inst) {
+  155|     60|    const int hash = (int)fnv1a(&inst, sizeof(inst));
+  156|       |
+  157|     [0;35m60[0m|    for (int id = lookup_cse(b, hash, &inst); id;) {
+  158|      3|        return id;
+  159|      3|    }
+  160|     [0;35m57[0m|    for (int id = constant_prop(b, &inst); id;) {
+  161|      2|        return id;
+  162|      2|    }
+  163|       |
+  164|     55|    const int id = ++b->inst_len;
+  165|       |
+  166|     [0;35m55[0m|    if (b->inst_cap < b->inst_len) {
+  167|     [0;35m44[0m|        b->inst_cap = b->inst_cap ? 2*b->inst_cap : 1;
+  168|     44|        b->inst = realloc(b->inst, (size_t)b->inst_cap * sizeof(*b->inst));
+  169|     44|    }
+  170|     55|    b->inst[id-1] = inst;
+  171|       |
+  172|     [0;35m55[0m|    if (inst.kind <= UNIFORM) {
+  173|     [0;35m26[0m|        if (b->cse_len >= b->cse_cap*3/4) {
+  174|     25|            Builder grown = *b;
+  175|     25|            grown.cse_len = 0;
+  176|     [0;35m25[0m|            grown.cse_cap = b->cse_cap ? b->cse_cap*2 : 1;
+  177|     25|            grown.cse     = calloc((size_t)grown.cse_cap, sizeof *grown.cse);
+  178|     [0;35m48[0m|            for (int i = 0; i < b->cse_cap; i++) {
+  179|     [0;35m23[0m|                if (b->cse[i].id) {
+  180|     21|                    insert_cse(&grown, b->cse[i].id, b->cse[i].hash);
+  181|     21|                }
+  182|     23|            }
+  183|     25|            free(b->cse);
+  184|     25|            *b = grown;
+  185|     25|        }
+  186|     26|        insert_cse(b,id,hash);
+  187|     26|    }
+  188|     55|    return id;
+  189|     57|}
+  190|     43|#define inst(b,kind,bits,fn,...) (V##bits){inst_(b, (BInst){kind,bits/8,fn, __VA_ARGS__})}
+  191|       |
+  192|     16|void weft_run(const weft_Program* p, int n, void* const ptr[]) {
+  193|     16|    void* V = malloc(N * (size_t)p->slots);
+  194|       |
+  195|     16|    void* R = V;
+  196|     16|    const PInst* inst = p->inst;
+  197|       |
+  198|     [0;35m42[0m|    for (int off = 0; off+N <= n; off += N) {
+  199|     26|        inst->fn(inst,off,0,V,R,ptr);
+  200|     26|        inst = p->inst + p->loop_inst;
+  201|     26|        R    = (char*)V + (N * p->loop_slot);
+  202|     26|    }
+  203|     [0;35m16[0m|    for (unsigned tail = (unsigned)(n - n/N*N); tail; ) {
+  204|     [0;35m16[0m|        inst->fn(inst,n/N*N,tail,V,R,ptr);
+  205|     16|        break;
+  206|     16|    }
+  207|       |
+  208|     16|    free(V);
+  209|     16|}
+  210|       |
+  211|     17|Program* weft_compile(Builder* b) {
+  212|     [0;35m17[0m|    if (b->inst_len == 0 || !b->inst[b->inst_len-1].fn_and_done) {
+  213|      2|        inst_(b, (BInst){DONE, .fn_and_done=done});
+  214|      2|    }
+  215|       |
+  216|     17|    union {
+  217|     17|        struct { bool live, loop_dependent; };
+  218|     17|        int slot;
+  219|     17|    } *meta = calloc((size_t)b->inst_len, sizeof *meta);
+  220|       |
+  221|     17|    int live_insts = 0;
+  222|     [0;35m72[0m|    for (int i = b->inst_len; i --> 0;) {
+  223|     55|        const BInst inst = b->inst[i];
+  224|     [0;35m55[0m|        if (inst.kind >= STORE) {
+  225|     17|            meta[i].live = true;
+  226|     17|        }
+  227|     [0;35m55[0m|        if (meta[i].live) {
+  228|     51|            live_insts++;
+  229|     [0;35m51[0m|            if (inst.x) { meta[inst.x-1].live = true; }
+  230|     [0;35m51[0m|            if (inst.y) { meta[inst.y-1].live = true; }
+  231|     [0;35m51[0m|            if (inst.z) [0;41m{ meta[inst.z-1].live = true; }[0m
+  232|     [0;35m51[0m|            if (inst.w) [0;41m{ meta[inst.w-1].live = true; }[0m
+  233|     51|        }
+  234|     55|    }
+  235|       |
+  236|     [0;35m72[0m|    for (int i = 0; i < b->inst_len; i++) {
+  237|     55|        const BInst inst = b->inst[i];
+  238|     55|        meta[i].loop_dependent = inst.kind >= LOAD
+  239|     [0;35m55[0m|                              || (inst.x && meta[inst.x-1].loop_dependent)
+  240|     [0;35m55[0m|                              || (inst.y && meta[inst.y-1].loop_dependent)
+  241|     [0;35m55[0m|                              || (inst.z && [0;41mmeta[inst.z-1].loop_dependent[0m)
+  242|     [0;35m55[0m|                              || (inst.w && [0;41mmeta[inst.w-1].loop_dependent[0m);
+  243|     55|    }
+  244|       |
+  245|     17|    Program* p = malloc(sizeof(*p) + (size_t)live_insts * sizeof(*p->inst));
+  246|     17|    p->slots   = 0;
+  247|     17|    int insts  = 0;
+  248|       |
+  249|     [0;35m51[0m|    for (int loop_dependent = 0; loop_dependent < 2; loop_dependent++) {
+  250|     [0;35m34[0m|        if (loop_dependent) {
+  251|     17|            p->loop_inst = insts;
+  252|     17|            p->loop_slot = p->slots;
+  253|     17|        }
+  254|    [0;35m144[0m|        for (int i = 0; i < b->inst_len; i++) {
+  255|    [0;35m110[0m|            if (meta[i].live && meta[i].loop_dependent == loop_dependent) {
+  256|     51|                const BInst inst = b->inst[i];
+  257|     51|                p->inst[insts++] = (PInst) {
+  258|     [0;35m51[0m|                    .fn  = (i == b->inst_len-1) ? inst.fn_and_done : inst.fn,
+  259|     [0;35m51[0m|                    .x   = inst.x ? meta[inst.x-1].slot * N : 0,
+  260|     [0;35m51[0m|                    .y   = inst.y ? meta[inst.y-1].slot * N : 0,
+  261|     [0;35m51[0m|                    .z   = inst.z ? [0;41mmeta[inst.z-1].slot * [0m[0;41mN[0m : 0,
+  262|     [0;35m51[0m|                    .w   = inst.w ? [0;41mmeta[inst.w-1].slot * [0m[0;41mN[0m : 0,
+  263|     51|                    .imm = inst.imm,
+  264|     51|                };
+  265|     51|                meta[i].slot = p->slots;
+  266|     51|                p->slots += inst.slots;
+  267|     51|            }
+  268|    110|        }
+  269|     34|    }
+  270|     17|    assert(insts == live_insts);
+  271|       |
+  272|      0|    free(meta);
+  273|     17|    free(b->inst);
+  274|     17|    free(b->cse);
+  275|     17|    free(b);
+  276|     17|    return p;
+  277|     17|}
+  278|       |
+  279|       |
+  280|      [0;35m8[0m|stage(splat_8 ) { int8_t  *r=R; each r[i] = (int8_t )I->imm; next(r+N); }
+  281|      [0;35m8[0m|stage(splat_16) { int16_t *r=R; each r[i] = (int16_t)I->imm; next(r+N); }
+  282|     [0;35m56[0m|stage(splat_32) { int32_t *r=R; each r[i] = (int32_t)I->imm; next(r+N); }
+  283|      [0;35m8[0m|stage(splat_64) { int64_t *r=R; each r[i] = (int64_t)I->imm; next(r+N); }
+  284|       |
+  285|      [0;35m1[0m|V8  weft_splat_8 (Builder* b, int8_t  bits) { return inst(b, SPLAT,8 ,splat_8 , .imm=bits); }
+  286|      [0;35m1[0m|V16 weft_splat_16(Builder* b, int16_t bits) { return inst(b, SPLAT,16,splat_16, .imm=bits); }
+  287|      [0;35m9[0m|V32 weft_splat_32(Builder* b, int32_t bits) { return inst(b, SPLAT,32,splat_32, .imm=bits); }
+  288|      [0;35m1[0m|V64 weft_splat_64(Builder* b, int64_t bits) { return inst(b, SPLAT,64,splat_64, .imm=bits); }
+  289|       |
+  290|      [0;35m8[0m|stage(uniform_8)  { int8_t  *r=R, u=*(const int8_t* )ptr[I->imm]; each r[i] = u; next(r+N); }
+  291|      [0;35m8[0m|stage(uniform_16) { int16_t *r=R, u=*(const int16_t*)ptr[I->imm]; each r[i] = u; next(r+N); }
+  292|      [0;35m8[0m|stage(uniform_32) { int32_t *r=R, u=*(const int32_t*)ptr[I->imm]; each r[i] = u; next(r+N); }
+  293|      [0;35m0[0m|stage(uniform_64) [0;41m{ int64_t *r=R, u=*(const int64_t*)ptr[I->imm]; [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = u[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  294|       |
+  295|      [0;35m1[0m|V8  weft_uniform_8 (Builder* b, int ptr) { return inst(b, UNIFORM,8 ,uniform_8 , .imm=ptr); }
+  296|      [0;35m1[0m|V16 weft_uniform_16(Builder* b, int ptr) { return inst(b, UNIFORM,16,uniform_16, .imm=ptr); }
+  297|      [0;35m1[0m|V32 weft_uniform_32(Builder* b, int ptr) { return inst(b, UNIFORM,32,uniform_32, .imm=ptr); }
+  298|      [0;35m0[0m|V64 weft_uniform_64(Builder* b, int ptr) [0;41m{ return [0m[0;41minst[0m[0;41m(b, UNIFORM,64,uniform_64, .imm=ptr); }[0m
+  299|       |
+  300|      4|stage(load_8) {
+  301|      4|    int8_t* r = R;
+  302|      4|    tail ? memcpy(r, (const int8_t*)ptr[I->imm] + off, 1*tail)
+  303|      4|         : memcpy(r, (const int8_t*)ptr[I->imm] + off, 1*N);
+  304|      4|    next(r+N);
+  305|      4|}
+  306|      4|stage(load_16) {
+  307|      4|    int16_t* r = R;
+  308|      4|    tail ? memcpy(r, (const int16_t*)ptr[I->imm] + off, 2*tail)
+  309|      4|         : memcpy(r, (const int16_t*)ptr[I->imm] + off, 2*N);
+  310|      4|    next(r+N);
+  311|      4|}
+  312|     16|stage(load_32) {
+  313|     16|    int32_t* r = R;
+  314|     16|    tail ? memcpy(r, (const int32_t*)ptr[I->imm] + off, 4*tail)
+  315|     16|         : memcpy(r, (const int32_t*)ptr[I->imm] + off, 4*N);
+  316|     16|    next(r+N);
+  317|     16|}
+  318|      0|stage(load_64) [0;41m{[0m
+  319|      0|[0;41m    int64_t* r = R;[0m
+  320|      0|[0;41m    [0m[0;41mtail[0m[0;41m ? memcpy(r, (const int64_t*)ptr[I->imm] + off, 8*tail)[0m
+  321|      0|[0;41m         : memcpy(r, (const int64_t*)ptr[I->imm] + off, 8*N);[0m
+  322|      0|[0;41m    [0m[0;41mnext[0m[0;41m(r+N);[0m
+  323|      0|[0;41m}[0m
+  324|       |
+  325|      [0;35m2[0m|V8  weft_load_8 (Builder* b, int ptr) { return inst(b, LOAD,8 ,load_8 , .imm=ptr); }
+  326|      [0;35m2[0m|V16 weft_load_16(Builder* b, int ptr) { return inst(b, LOAD,16,load_16, .imm=ptr); }
+  327|      [0;35m8[0m|V32 weft_load_32(Builder* b, int ptr) { return inst(b, LOAD,32,load_32, .imm=ptr); }
+  328|      [0;35m0[0m|V64 weft_load_64(Builder* b, int ptr) [0;41m{ return [0m[0;41minst[0m[0;41m(b, LOAD,64,load_64, .imm=ptr); }[0m
+  329|       |
+  330|      0|stage(store_8) [0;41m{[0m
+  331|      0|[0;41m    [0m[0;41mtail[0m[0;41m ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*tail)[0m
+  332|      0|[0;41m         : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*N);[0m
+  333|      0|[0;41m    [0m[0;41mnext[0m[0;41m(R);[0m
+  334|      0|[0;41m}[0m
+  335|      8|stage(store_8_and_done) {
+  336|      8|    tail ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*tail)
+  337|      8|         : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*N);
+  338|      8|    (void)R;
+  339|      8|}
+  340|      0|stage(store_16) [0;41m{[0m
+  341|      0|[0;41m    [0m[0;41mtail[0m[0;41m ? memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*tail)[0m
+  342|      0|[0;41m         : memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*N);[0m
+  343|      0|[0;41m    [0m[0;41mnext[0m[0;41m(R);[0m
+  344|      0|[0;41m}[0m
+  345|      8|stage(store_16_and_done) {
+  346|      8|    tail ? memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*tail)
+  347|      8|         : memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*N);
+  348|      8|    (void)R;
+  349|      8|}
+  350|      0|stage(store_32) [0;41m{[0m
+  351|      0|[0;41m    [0m[0;41mtail[0m[0;41m ? memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*tail)[0m
+  352|      0|[0;41m         : memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*N);[0m
+  353|      0|[0;41m    [0m[0;41mnext[0m[0;41m(R);[0m
+  354|      0|[0;41m}[0m
+  355|     18|stage(store_32_and_done) {
+  356|     18|    tail ? memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*tail)
+  357|     18|         : memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*N);
+  358|     18|    (void)R;
+  359|     18|}
+  360|      0|stage(store_64) [0;41m{[0m
+  361|      0|[0;41m    [0m[0;41mtail[0m[0;41m ? memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*tail)[0m
+  362|      0|[0;41m         : memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*N);[0m
+  363|      0|[0;41m    [0m[0;41mnext[0m[0;41m(R);[0m
+  364|      0|[0;41m}[0m
+  365|      4|stage(store_64_and_done) {
+  366|      4|    tail ? memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*tail)
+  367|      4|         : memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*N);
+  368|      4|    (void)R;
+  369|      4|}
+  370|       |
+  371|      3|void weft_store_8 (Builder* b, int ptr, V8  x) {
+  372|      3|    inst_(b, (BInst){STORE, .fn=store_8 , .fn_and_done=store_8_and_done , .x=x.id, .imm=ptr});
+  373|      3|}
+  374|      3|void weft_store_16(Builder* b, int ptr, V16 x) {
+  375|      3|    inst_(b, (BInst){STORE, .fn=store_16, .fn_and_done=store_16_and_done, .x=x.id, .imm=ptr});
+  376|      3|}
+  377|      8|void weft_store_32(Builder* b, int ptr, V32 x) {
+  378|      8|    inst_(b, (BInst){STORE, .fn=store_32, .fn_and_done=store_32_and_done, .x=x.id, .imm=ptr});
+  379|      8|}
+  380|      1|void weft_store_64(Builder* b, int ptr, V64 x) {
+  381|      1|    inst_(b, (BInst){STORE, .fn=store_64, .fn_and_done=store_64_and_done, .x=x.id, .imm=ptr});
+  382|      1|}
+  383|       |
+  384|       |
+  385|       |static const int64_t f16_n0 = 0x8000, f32_n0 = 0x80000000, f64_n0 = (int64_t)0x8000000000000000,
+  386|       |                     f16_p1 = 0x3c00, f32_p1 = 0x3f800000, f64_p1 =          0x3ff0000000000000;
+  387|       |
+  388|     52|static bool is_splat(Builder* b, int id, int64_t imm) {
+  389|     52|    return b->inst[id-1].kind == SPLAT
+  390|     52|        && b->inst[id-1].imm  == imm;
+  391|     52|}
+  392|      1|static bool any_splat(Builder* b, int id, int64_t* imm) {
+  393|      1|    *imm = b->inst[id-1].imm;
+  394|      1|    return b->inst[id-1].kind == SPLAT;
+  395|      1|}
+  396|       |
+  397|     12|static void sort_commutative(int* x, int* y) {
+  398|     [0;35m12[0m|    int lo = *x < *y ? *x : *y,
+  399|     [0;35m12[0m|        hi = *x < *y ? *y : *x;
+  400|     12|    *x = lo;
+  401|     12|    *y = hi;
+  402|     12|}
+  403|       |
+  404|      0|stage(add_f16) [0;41m{[0m
+  405|      [0;35m0[0m|[0;41m    __fp16 *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y);[0m
+  406|      [0;35m0[0m|[0;41m    [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (__fp16)((float)x[i] + (float)y[i])[0m[0;41m;[0m
+  407|      0|[0;41m    [0m[0;41mnext[0m[0;41m(r+N);[0m
+  408|      0|[0;41m}[0m
+  409|      0|stage(sub_f16) [0;41m{[0m
+  410|      [0;35m0[0m|[0;41m    __fp16 *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y);[0m
+  411|      [0;35m0[0m|[0;41m    [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (__fp16)((float)x[i] - (float)y[i])[0m[0;41m;[0m
+  412|      0|[0;41m    [0m[0;41mnext[0m[0;41m(r+N);[0m
+  413|      0|[0;41m}[0m
+  414|      0|stage(mul_f16) [0;41m{[0m
+  415|      [0;35m0[0m|[0;41m    __fp16 *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y);[0m
+  416|      [0;35m0[0m|[0;41m    [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (__fp16)((float)x[i] * (float)y[i])[0m[0;41m;[0m
+  417|      0|[0;41m    [0m[0;41mnext[0m[0;41m(r+N);[0m
+  418|      0|[0;41m}[0m
+  419|      0|stage(div_f16) [0;41m{[0m
+  420|      [0;35m0[0m|[0;41m    __fp16 *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y);[0m
+  421|      [0;35m0[0m|[0;41m    [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (__fp16)((float)x[i] / (float)y[i])[0m[0;41m;[0m
+  422|      0|[0;41m    [0m[0;41mnext[0m[0;41m(r+N);[0m
+  423|      0|[0;41m}[0m
+  424|       |
+  425|      0|V16 weft_add_f16(Builder* b, V16 x, V16 y) [0;41m{[0m
+  426|      0|[0;41m    sort_commutative(&x.id, &y.id);[0m
+  427|      [0;35m0[0m|[0;41m    if ([0m[0;41mis_splat(b,y.id,      0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  428|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,y.id, f16_n0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  429|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,x.id,      0)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m[0m
+  430|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,x.id, f16_n0)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m[0m
+  431|      [0;35m0[0m|    [0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,16, add_f16, .x=x.id, .y=y.id);[0m
+  432|      0|[0;41m}[0m
+  433|      0|V16 weft_sub_f16(Builder* b, V16 x, V16 y) [0;41m{[0m
+  434|      [0;35m0[0m|[0;41m    if ([0m[0;41mis_splat(b,y.id,      0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  435|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,y.id, f16_n0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  436|      [0;35m0[0m|    [0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,16, sub_f16, .x=x.id, .y=y.id);[0m
+  437|      0|[0;41m}[0m
+  438|      0|V16 weft_mul_f16(Builder* b, V16 x, V16 y) [0;41m{[0m
+  439|      0|[0;41m    sort_commutative(&x.id, &y.id);[0m
+  440|       |[0;41m[0m    // Note: x*0 isn't 0 when x=NaN.[0;41m[0m
+  441|      [0;35m0[0m|[0;41m    if ([0m[0;41mis_splat(b,y.id, f16_p1)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  442|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,x.id, f16_p1)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m[0m
+  443|      [0;35m0[0m|    [0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,16, mul_f16, .x=x.id, .y=y.id);[0m
+  444|      0|[0;41m}[0m
+  445|      0|V16 weft_div_f16(Builder* b, V16 x, V16 y) [0;41m{[0m
+  446|      [0;35m0[0m|[0;41m    if ([0m[0;41mis_splat(b,y.id, f16_p1)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  447|      [0;35m0[0m|    [0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,16, div_f16, .x=x.id, .y=y.id);[0m
+  448|      0|[0;41m}[0m
+  449|       |
+  450|     [0;35m48[0m|stage(add_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
+  451|     [0;35m48[0m|stage(sub_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
+  452|     [0;35m16[0m|stage(mul_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
+  453|      [0;35m0[0m|stage(div_f32) [0;41m{ float *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = x[i]/y[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  454|       |
+  455|      5|V32 weft_add_f32(Builder* b, V32 x, V32 y) {
+  456|      5|    sort_commutative(&x.id, &y.id);
+  457|      [0;35m5[0m|    if (is_splat(b,y.id,      0)) [0;41m{ return x; }[0m
+  458|      [0;35m5[0m|    if (is_splat(b,y.id, f32_n0)) [0;41m{ return x; }[0m
+  459|      [0;35m5[0m|    if (is_splat(b,x.id,      0)) [0;41m{ return y; }[0m
+  460|      [0;35m5[0m|    if (is_splat(b,x.id, f32_n0)) [0;41m{ return y; }[0m
+  461|      [0;35m5[0m|    return inst(b, MATH,32, add_f32, .x=x.id, .y=y.id);
+  462|      5|}
+  463|      3|V32 weft_sub_f32(Builder* b, V32 x, V32 y) {
+  464|      [0;35m3[0m|    if (is_splat(b,y.id,      0)) [0;41m{ return x; }[0m
+  465|      [0;35m3[0m|    if (is_splat(b,y.id, f32_n0)) [0;41m{ return x; }[0m
+  466|      [0;35m3[0m|    return inst(b, MATH,32, sub_f32, .x=x.id, .y=y.id);
+  467|      3|}
+  468|      1|V32 weft_mul_f32(Builder* b, V32 x, V32 y) {
+  469|      1|    sort_commutative(&x.id, &y.id);
+  470|       |    // Note: x*0 isn't 0 when x=NaN.
+  471|      [0;35m1[0m|    if (is_splat(b,y.id, f32_p1)) [0;41m{ return x; }[0m
+  472|      [0;35m1[0m|    if (is_splat(b,x.id, f32_p1)) [0;41m{ return y; }[0m
+  473|      [0;35m1[0m|    return inst(b, MATH,32, mul_f32, .x=x.id, .y=y.id);
+  474|      1|}
+  475|      1|V32 weft_div_f32(Builder* b, V32 x, V32 y) {
+  476|      [0;35m1[0m|    if (is_splat(b,y.id, f32_p1)) { return x; }
+  477|      [0;35m0[0m|    [0;41mreturn [0m[0;41minst[0m(b, MATH,32, div_f32, .x=x.id, .y=y.id);
+  478|      1|}
+  479|       |
+  480|      [0;35m0[0m|stage(add_f64) [0;41m{ double *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = x[i]+y[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  481|      [0;35m0[0m|stage(sub_f64) [0;41m{ double *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = x[i]-y[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  482|      [0;35m0[0m|stage(mul_f64) [0;41m{ double *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = x[i]*y[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  483|      [0;35m0[0m|stage(div_f64) [0;41m{ double *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = x[i]/y[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  484|       |
+  485|      0|V64 weft_add_f64(Builder* b, V64 x, V64 y) [0;41m{[0m
+  486|      0|[0;41m    sort_commutative(&x.id, &y.id);[0m
+  487|      [0;35m0[0m|[0;41m    if ([0m[0;41mis_splat(b,y.id,      0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  488|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,y.id, f64_n0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  489|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,x.id,      0)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m[0m
+  490|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,x.id, f64_n0)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m[0m
+  491|      [0;35m0[0m|    [0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,64, add_f64, .x=x.id, .y=y.id);[0m
+  492|      0|[0;41m}[0m
+  493|      0|V64 weft_sub_f64(Builder* b, V64 x, V64 y) [0;41m{[0m
+  494|      [0;35m0[0m|[0;41m    if ([0m[0;41mis_splat(b,y.id,      0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  495|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,y.id, f64_n0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  496|      [0;35m0[0m|    [0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,64, sub_f64, .x=x.id, .y=y.id);[0m
+  497|      0|[0;41m}[0m
+  498|      0|V64 weft_mul_f64(Builder* b, V64 x, V64 y) [0;41m{[0m
+  499|      0|[0;41m    sort_commutative(&x.id, &y.id);[0m
+  500|       |[0;41m[0m    // Note: x*0 isn't 0 when x=NaN.[0;41m[0m
+  501|      [0;35m0[0m|[0;41m    if ([0m[0;41mis_splat(b,y.id, f64_p1)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  502|      [0;35m0[0m|    [0;41mif ([0m[0;41mis_splat(b,x.id, f64_p1)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m[0m
+  503|      [0;35m0[0m|    [0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,64, mul_f64, .x=x.id, .y=y.id);[0m
+  504|      0|[0;41m}[0m
+  505|      0|V64 weft_div_f64(Builder* b, V64 x, V64 y) [0;41m{[0m
+  506|      [0;35m0[0m|[0;41m    if ([0m[0;41mis_splat(b,y.id, f64_p1)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m[0m
+  507|      [0;35m0[0m|    [0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,64, div_f64, .x=x.id, .y=y.id);[0m
+  508|      0|[0;41m}[0m
+  509|       |
+  510|      [0;35m0[0m|stage( ceil_f16) [0;41m{ __fp16 *r=R, *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (__fp16) ceilf((float)x[i])[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  511|      [0;35m0[0m|stage( ceil_f32) [0;41m{ float  *r=R, *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =          ceilf(       x[i])[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  512|      [0;35m0[0m|stage( ceil_f64) [0;41m{ double *r=R, *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =          ceil (       x[i])[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  513|      [0;35m0[0m|stage(floor_f16) [0;41m{ __fp16 *r=R, *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (__fp16)floorf((float)x[i])[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  514|      [0;35m0[0m|stage(floor_f32) [0;41m{ float  *r=R, *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =         floorf(       x[i])[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  515|      [0;35m0[0m|stage(floor_f64) [0;41m{ double *r=R, *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =         floor (       x[i])[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  516|      [0;35m0[0m|stage( sqrt_f16) [0;41m{ __fp16 *r=R, *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (__fp16) sqrtf((float)x[i])[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  517|     [0;35m16[0m|stage( sqrt_f32) { float  *r=R, *x=v(I->x); each r[i] =          sqrtf(       x[i]); next(r+N); }
+  518|      [0;35m0[0m|stage( sqrt_f64) [0;41m{ double *r=R, *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =          sqrt (       x[i])[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  519|       |
+  520|      [0;35m0[0m|V16  weft_ceil_f16(Builder* b, V16 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,16, ceil_f16, .x=x.id); }[0m
+  521|      [0;35m0[0m|V32  weft_ceil_f32(Builder* b, V32 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,32, ceil_f32, .x=x.id); }[0m
+  522|      [0;35m0[0m|V64  weft_ceil_f64(Builder* b, V64 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,64, ceil_f64, .x=x.id); }[0m
+  523|      [0;35m0[0m|V16 weft_floor_f16(Builder* b, V16 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,16,floor_f16, .x=x.id); }[0m
+  524|      [0;35m0[0m|V32 weft_floor_f32(Builder* b, V32 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,32,floor_f32, .x=x.id); }[0m
+  525|      [0;35m0[0m|V64 weft_floor_f64(Builder* b, V64 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,64,floor_f64, .x=x.id); }[0m
+  526|      [0;35m0[0m|V16  weft_sqrt_f16(Builder* b, V16 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,16, sqrt_f16, .x=x.id); }[0m
+  527|      [0;35m1[0m|V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.id); }
+  528|      [0;35m0[0m|V64  weft_sqrt_f64(Builder* b, V64 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,64, sqrt_f64, .x=x.id); }[0m
+  529|       |
+  530|       |#define INT_STAGES(B,S,U) \
+  531|      [0;35m8[0m|    stage(add_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] +  y[i] ; next(r+N);}  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:add_i8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:add_i16
+[0m  ------------------
+  | [0;36mweft.c:add_i32:
+[0m  |  531|      [0;35m8[0m|    stage(add_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] +  y[i] ; next(r+N);}  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:add_i64
+[0m  ------------------
+  532|      [0;35m0[0m|    stage(sub_i ##B) [0;41m{U *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =    x[i] -  y[i][0m[0;41m ; [0m[0;41mnext[0m[0;41m(r+N);}[0m  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:sub_i8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:sub_i16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:sub_i32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:sub_i64
+[0m  ------------------
+  533|     [0;35m48[0m|    stage(mul_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] *  y[i] ; next(r+N);}  \
+  ------------------
+  | [0;36mweft.c:mul_i8:
+[0m  |  533|     [0;35m16[0m|    stage(mul_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] *  y[i] ; next(r+N);}  \
+  ------------------
+  | [0;36mweft.c:mul_i16:
+[0m  |  533|     [0;35m16[0m|    stage(mul_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] *  y[i] ; next(r+N);}  \
+  ------------------
+  | [0;36mweft.c:mul_i32:
+[0m  |  533|     [0;35m16[0m|    stage(mul_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] *  y[i] ; next(r+N);}  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:mul_i64
+[0m  ------------------
+  534|      [0;35m0[0m|    stage(shlv_i##B) [0;41m{S *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =(S)(x[i] << y[i])[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N);}[0m  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shlv_i8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shlv_i16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shlv_i32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shlv_i64
+[0m  ------------------
+  535|      [0;35m0[0m|    stage(shrv_s##B) [0;41m{S *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =    x[i] >> y[i][0m[0;41m ; [0m[0;41mnext[0m[0;41m(r+N);}[0m  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shrv_s8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shrv_s16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shrv_s32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shrv_s64
+[0m  ------------------
+  536|      [0;35m0[0m|    stage(shrv_u##B) [0;41m{U *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =    x[i] >> y[i][0m[0;41m ; [0m[0;41mnext[0m[0;41m(r+N);}[0m  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shrv_u8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shrv_u16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shrv_u32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shrv_u64
+[0m  ------------------
+  537|      [0;35m0[0m|    stage(shli_i##B) [0;41m{S *r=R, *x=[0m[0;41mv[0m[0;41m(I->x);             [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =(S)(x[i]<<I->imm)[0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N);}[0m  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shli_i8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shli_i16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shli_i32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shli_i64
+[0m  ------------------
+  538|      [0;35m8[0m|    stage(shri_s##B) {S *r=R, *x=v(I->x);             each r[i] =    x[i]>>I->imm ; next(r+N);}  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shri_s8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shri_s16
+[0m  ------------------
+  | [0;36mweft.c:shri_s32:
+[0m  |  538|      [0;35m8[0m|    stage(shri_s##B) {S *r=R, *x=v(I->x);             each r[i] =    x[i]>>I->imm ; next(r+N);}  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shri_s64
+[0m  ------------------
+  539|      [0;35m0[0m|    stage(shri_u##B) [0;41m{U *r=R, *x=[0m[0;41mv[0m[0;41m(I->x);             [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =    x[i]>>I->imm[0m[0;41m ; [0m[0;41mnext[0m[0;41m(r+N);}[0m  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shri_u8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shri_u16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shri_u32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:shri_u64
+[0m  ------------------
+  540|     [0;35m16[0m|    stage(and_  ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] &  y[i] ; next(r+N);}  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:and_8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:and_16
+[0m  ------------------
+  | [0;36mweft.c:and_32:
+[0m  |  540|     [0;35m16[0m|    stage(and_  ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] &  y[i] ; next(r+N);}  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:and_64
+[0m  ------------------
+  541|      [0;35m0[0m|    stage(bic_  ##B) [0;41m{U *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =    x[i] & ~y[i][0m[0;41m ; [0m[0;41mnext[0m[0;41m(r+N);}[0m  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:bic_8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:bic_16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:bic_32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:bic_64
+[0m  ------------------
+  542|      [0;35m0[0m|    stage( or_  ##B) [0;41m{U *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =    x[i] |  y[i][0m[0;41m ; [0m[0;41mnext[0m[0;41m(r+N);}[0m  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:or_8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:or_16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:or_32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:or_64
+[0m  ------------------
+  543|      [0;35m0[0m|    stage(xor_  ##B) [0;41m{U *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =    x[i] ^  y[i][0m[0;41m ; [0m[0;41mnext[0m[0;41m(r+N);}[0m  \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:xor_8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:xor_16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:xor_32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:xor_64
+[0m  ------------------
+  544|      0|    stage(sel_ ##B) [0;41m{                                                                            \[0m
+  545|      [0;35m0[0m|[0;41m        U *r=R, *x=[0m[0;41mv[0m[0;41m(I->x), *y=[0m[0;41mv[0m[0;41m(I->y), *z=[0m[0;41mv[0m[0;41m(I->z);                                              \[0m
+  546|      [0;35m0[0m|[0;41m        [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = ( x[i] & y[i])                                                               \[0m
+  547|      0|[0;41m                  | (~x[i] & z[i])[0m[0;41m;                                                              \[0m
+  548|      0|[0;41m        [0m[0;41mnext[0m[0;41m(r+N);                                                                               \[0m
+  549|      0|[0;41m    }[0m                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:sel_8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:sel_16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:sel_32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft.c:sel_64
+[0m  ------------------
+  550|      1|    V##B weft_add_i##B(Builder* b, V##B x, V##B y) {                                             \
+  551|      1|        sort_commutative(&x.id, &y.id);                                                          \
+  552|      [0;35m1[0m|        if (is_splat(b,y.id, 0)) [0;41m{ return x; }[0m                                                   \
+  553|      [0;35m1[0m|        if (is_splat(b,x.id, 0)) [0;41m{ return y; }[0m                                                   \
+  554|      [0;35m1[0m|        return inst(b, MATH,B,add_i##B, .x=x.id, .y=y.id);                                       \
+  555|      1|    }                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_add_i8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_add_i16
+[0m  ------------------
+  | [0;36mweft_add_i32:
+[0m  |  550|      1|    V##B weft_add_i##B(Builder* b, V##B x, V##B y) {                                             \
+  |  551|      1|        sort_commutative(&x.id, &y.id);                                                          \
+  |  552|      [0;35m1[0m|        if (is_splat(b,y.id, 0)) [0;41m{ return x; }[0m                                                   \
+  |  553|      [0;35m1[0m|        if (is_splat(b,x.id, 0)) [0;41m{ return y; }[0m                                                   \
+  |  554|      [0;35m1[0m|        return inst(b, MATH,B,add_i##B, .x=x.id, .y=y.id);                                       \
+  |  555|      1|    }                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_add_i64
+[0m  ------------------
+  556|      0|    V##B weft_sub_i##B(Builder* b, V##B x, V##B y) [0;41m{                                             \[0m
+  557|      [0;35m0[0m|[0;41m        if ([0m[0;41mis_splat(b,y.id, 0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m                                                   \[0m
+  558|      [0;35m0[0m|[0;41m        [0m[0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,B,sub_i##B, .x=x.id, .y=y.id);                                       \[0m
+  559|      0|[0;41m    }[0m                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_sub_i8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_sub_i16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_sub_i32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_sub_i64
+[0m  ------------------
+  560|      4|    V##B weft_mul_i##B(Builder* b, V##B x, V##B y) {                                             \
+  561|      4|        sort_commutative(&x.id, &y.id);                                                          \
+  562|      [0;35m4[0m|        if (is_splat(b,y.id, 0)) [0;41m{ return y; }[0m                                                   \
+  563|      [0;35m4[0m|        if (is_splat(b,x.id, 0)) [0;41m{ return x; }[0m                                                   \
+  564|      [0;35m4[0m|        if (is_splat(b,y.id, 1)) [0;41m{ return x; }[0m                                                   \
+  565|      [0;35m4[0m|        if (is_splat(b,x.id, 1)) { return y; }                                                   \
+  566|      [0;35m4[0m|        return inst(b, MATH,B,mul_i##B, .x=x.id, .y=y.id);                                       \
+  567|      4|    }                                                                                            \
+  ------------------
+  | [0;36mweft_mul_i8:
+[0m  |  560|      1|    V##B weft_mul_i##B(Builder* b, V##B x, V##B y) {                                             \
+  |  561|      1|        sort_commutative(&x.id, &y.id);                                                          \
+  |  562|      [0;35m1[0m|        if (is_splat(b,y.id, 0)) [0;41m{ return y; }[0m                                                   \
+  |  563|      [0;35m1[0m|        if (is_splat(b,x.id, 0)) [0;41m{ return x; }[0m                                                   \
+  |  564|      [0;35m1[0m|        if (is_splat(b,y.id, 1)) [0;41m{ return x; }[0m                                                   \
+  |  565|      [0;35m1[0m|        if (is_splat(b,x.id, 1)) [0;41m{ return y; }[0m                                                   \
+  |  566|      [0;35m1[0m|        return inst(b, MATH,B,mul_i##B, .x=x.id, .y=y.id);                                       \
+  |  567|      1|    }                                                                                            \
+  ------------------
+  | [0;36mweft_mul_i16:
+[0m  |  560|      1|    V##B weft_mul_i##B(Builder* b, V##B x, V##B y) {                                             \
+  |  561|      1|        sort_commutative(&x.id, &y.id);                                                          \
+  |  562|      [0;35m1[0m|        if (is_splat(b,y.id, 0)) [0;41m{ return y; }[0m                                                   \
+  |  563|      [0;35m1[0m|        if (is_splat(b,x.id, 0)) [0;41m{ return x; }[0m                                                   \
+  |  564|      [0;35m1[0m|        if (is_splat(b,y.id, 1)) [0;41m{ return x; }[0m                                                   \
+  |  565|      [0;35m1[0m|        if (is_splat(b,x.id, 1)) [0;41m{ return y; }[0m                                                   \
+  |  566|      [0;35m1[0m|        return inst(b, MATH,B,mul_i##B, .x=x.id, .y=y.id);                                       \
+  |  567|      1|    }                                                                                            \
+  ------------------
+  | [0;36mweft_mul_i32:
+[0m  |  560|      2|    V##B weft_mul_i##B(Builder* b, V##B x, V##B y) {                                             \
+  |  561|      2|        sort_commutative(&x.id, &y.id);                                                          \
+  |  562|      [0;35m2[0m|        if (is_splat(b,y.id, 0)) [0;41m{ return y; }[0m                                                   \
+  |  563|      [0;35m2[0m|        if (is_splat(b,x.id, 0)) [0;41m{ return x; }[0m                                                   \
+  |  564|      [0;35m2[0m|        if (is_splat(b,y.id, 1)) [0;41m{ return x; }[0m                                                   \
+  |  565|      [0;35m2[0m|        if (is_splat(b,x.id, 1)) { return y; }                                                   \
+  |  566|      [0;35m2[0m|        return inst(b, MATH,B,mul_i##B, .x=x.id, .y=y.id);                                       \
+  |  567|      2|    }                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_mul_i64
+[0m  ------------------
+  568|      0|    V##B weft_shl_i##B(Builder* b, V##B x, V##B y) [0;41m{                                             \[0m
+  569|      [0;35m0[0m|[0;41m        if ([0m[0;41mis_splat(b,y.id,0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m                                                    \[0m
+  570|      [0;35m0[0m|[0;41m        [0m[0;41mfor (int64_t imm; [0m[0;41many_splat(b,y.id,&imm)[0m[0;41m;) [0m[0;41m{                                             \[0m
+  571|      0|[0;41m            return [0m[0;41minst[0m[0;41m(b, MATH,B,shli_i##B, .x=x.id, .imm=imm);                                 \[0m
+  572|      0|[0;41m        }                                                                                        \[0m
+  573|      [0;35m0[0m|[0;41m        [0m[0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,B,shlv_i##B, .x=x.id, .y=y.id);                                      \[0m
+  574|      0|[0;41m    }[0m                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_shl_i8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_shl_i16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_shl_i32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_shl_i64
+[0m  ------------------
+  575|      1|    V##B weft_shr_s##B(Builder* b, V##B x, V##B y) {                                             \
+  576|      [0;35m1[0m|        if (is_splat(b,y.id,0)) [0;41m{ return x; }[0m                                                    \
+  577|      [0;35m1[0m|        for (int64_t imm; any_splat(b,y.id,&imm);) {                                             \
+  578|      1|            return inst(b, MATH,B,shri_s##B, .x=x.id, .imm=imm);                                 \
+  579|      1|        }                                                                                        \
+  580|      [0;35m1[0m|        [0;41mreturn [0m[0;41minst[0m(b, MATH,B,shrv_s##B, .x=x.id, .y=y.id);                                      \
+  581|      1|    }                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_shr_s8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_shr_s16
+[0m  ------------------
+  | [0;36mweft_shr_s32:
+[0m  |  575|      1|    V##B weft_shr_s##B(Builder* b, V##B x, V##B y) {                                             \
+  |  576|      [0;35m1[0m|        if (is_splat(b,y.id,0)) [0;41m{ return x; }[0m                                                    \
+  |  577|      [0;35m1[0m|        for (int64_t imm; any_splat(b,y.id,&imm);) {                                             \
+  |  578|      1|            return inst(b, MATH,B,shri_s##B, .x=x.id, .imm=imm);                                 \
+  |  579|      1|        }                                                                                        \
+  |  580|      [0;35m1[0m|        [0;41mreturn [0m[0;41minst[0m(b, MATH,B,shrv_s##B, .x=x.id, .y=y.id);                                      \
+  |  581|      1|    }                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_shr_s64
+[0m  ------------------
+  582|      0|    V##B weft_shr_u##B(Builder* b, V##B x, V##B y) [0;41m{                                             \[0m
+  583|      [0;35m0[0m|[0;41m        if ([0m[0;41mis_splat(b,y.id,0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m                                                    \[0m
+  584|      [0;35m0[0m|[0;41m        [0m[0;41mfor (int64_t imm; [0m[0;41many_splat(b,y.id,&imm)[0m[0;41m;) [0m[0;41m{                                             \[0m
+  585|      0|[0;41m            return [0m[0;41minst[0m[0;41m(b, MATH,B,shri_u##B, .x=x.id, .imm=imm);                                 \[0m
+  586|      0|[0;41m        }                                                                                        \[0m
+  587|      [0;35m0[0m|[0;41m        [0m[0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,B,shrv_u##B, .x=x.id, .y=y.id);                                      \[0m
+  588|      0|[0;41m    }[0m                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_shr_u8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_shr_u16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_shr_u32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_shr_u64
+[0m  ------------------
+  589|      1|    V##B weft_and_##B(Builder* b, V##B x, V##B y) {                                              \
+  590|      1|        sort_commutative(&x.id, &y.id);                                                          \
+  591|      [0;35m1[0m|        if (x.id == y.id) [0;41m{ return x; }[0m                                                          \
+  592|      [0;35m1[0m|        if (is_splat(b,y.id, 0)) [0;41m{ return y; }[0m                                                   \
+  593|      [0;35m1[0m|        if (is_splat(b,x.id, 0)) [0;41m{ return x; }[0m                                                   \
+  594|      [0;35m1[0m|        if (is_splat(b,y.id,-1)) [0;41m{ return x; }[0m                                                   \
+  595|      [0;35m1[0m|        if (is_splat(b,x.id,-1)) [0;41m{ return y; }[0m                                                   \
+  596|      [0;35m1[0m|        return inst(b, MATH,B,and_##B, .x=x.id, .y=y.id);                                        \
+  597|      1|    }                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_and_8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_and_16
+[0m  ------------------
+  | [0;36mweft_and_32:
+[0m  |  589|      1|    V##B weft_and_##B(Builder* b, V##B x, V##B y) {                                              \
+  |  590|      1|        sort_commutative(&x.id, &y.id);                                                          \
+  |  591|      [0;35m1[0m|        if (x.id == y.id) [0;41m{ return x; }[0m                                                          \
+  |  592|      [0;35m1[0m|        if (is_splat(b,y.id, 0)) [0;41m{ return y; }[0m                                                   \
+  |  593|      [0;35m1[0m|        if (is_splat(b,x.id, 0)) [0;41m{ return x; }[0m                                                   \
+  |  594|      [0;35m1[0m|        if (is_splat(b,y.id,-1)) [0;41m{ return x; }[0m                                                   \
+  |  595|      [0;35m1[0m|        if (is_splat(b,x.id,-1)) [0;41m{ return y; }[0m                                                   \
+  |  596|      [0;35m1[0m|        return inst(b, MATH,B,and_##B, .x=x.id, .y=y.id);                                        \
+  |  597|      1|    }                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_and_64
+[0m  ------------------
+  598|      0|    V##B weft_or_##B(Builder* b, V##B x, V##B y) [0;41m{                                               \[0m
+  599|      0|[0;41m        sort_commutative(&x.id, &y.id);                                                          \[0m
+  600|      [0;35m0[0m|[0;41m        if ([0m[0;41mx.id == y.id[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m                                                          \[0m
+  601|      [0;35m0[0m|[0;41m        [0m[0;41mif ([0m[0;41mis_splat(b,y.id, 0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m                                                   \[0m
+  602|      [0;35m0[0m|[0;41m        [0m[0;41mif ([0m[0;41mis_splat(b,x.id, 0)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m                                                   \[0m
+  603|      [0;35m0[0m|[0;41m        [0m[0;41mif ([0m[0;41mis_splat(b,y.id,-1)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m                                                   \[0m
+  604|      [0;35m0[0m|[0;41m        [0m[0;41mif ([0m[0;41mis_splat(b,x.id,-1)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m                                                   \[0m
+  605|      [0;35m0[0m|[0;41m        [0m[0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,B,or_##B, .x=x.id, .y=y.id);                                         \[0m
+  606|      0|[0;41m    }[0m                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_or_8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_or_16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_or_32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_or_64
+[0m  ------------------
+  607|      0|    V##B weft_xor_##B(Builder* b, V##B x, V##B y) [0;41m{                                              \[0m
+  608|      0|[0;41m        sort_commutative(&x.id, &y.id);                                                          \[0m
+  609|      [0;35m0[0m|[0;41m        if ([0m[0;41mx.id == y.id[0m[0;41m) [0m[0;41m{ return weft_splat_##B(b,0); }[0m[0;41m                                        \[0m
+  610|      [0;35m0[0m|[0;41m        [0m[0;41mif ([0m[0;41mis_splat(b,y.id, 0)[0m[0;41m) [0m[0;41m{ return x; }[0m[0;41m                                                   \[0m
+  611|      [0;35m0[0m|[0;41m        [0m[0;41mif ([0m[0;41mis_splat(b,x.id, 0)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m                                                   \[0m
+  612|      [0;35m0[0m|[0;41m        [0m[0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,B,xor_##B, .x=x.id, .y=y.id);                                        \[0m
+  613|      0|[0;41m    }[0m                                                                                            \
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_xor_8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_xor_16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_xor_32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_xor_64
+[0m  ------------------
+  614|      0|    V##B weft_sel_##B(Builder* b, V##B x, V##B y, V##B z) [0;41m{                                      \[0m
+  615|      [0;35m0[0m|[0;41m        if ([0m[0;41mis_splat(b,x.id, 0)[0m[0;41m) [0m[0;41m{ return z; }[0m[0;41m                                                   \[0m
+  616|      [0;35m0[0m|[0;41m        [0m[0;41mif ([0m[0;41mis_splat(b,x.id,-1)[0m[0;41m) [0m[0;41m{ return y; }[0m[0;41m                                                   \[0m
+  617|      [0;35m0[0m|[0;41m        [0m[0;41mif ([0m[0;41mis_splat(b,z.id, 0)[0m[0;41m) [0m[0;41m{ return weft_and_##B(b,x,y); }[0m[0;41m                                 \[0m
+  618|      [0;35m0[0m|[0;41m        [0m[0;41mif ([0m[0;41mis_splat(b,y.id, 0)[0m[0;41m) [0m[0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,B,bic_##B, .x=z.id, .y=x.id); }           \[0m
+  619|      [0;35m0[0m|[0;41m        [0m[0;41mreturn [0m[0;41minst[0m[0;41m(b, MATH,B,sel_##B, .x=x.id, .y=y.id, .z=z.id);                               \[0m
+  620|      0|[0;41m    }[0m
+  ------------------
+  | [0;31mUnexecuted instantiation: weft_sel_8
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_sel_16
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_sel_32
+[0m  ------------------
+  | [0;31mUnexecuted instantiation: weft_sel_64
+[0m  ------------------
+  621|       |
+  622|       |INT_STAGES( 8, int8_t, uint8_t)
+  623|       |INT_STAGES(16,int16_t,uint16_t)
+  624|       |INT_STAGES(32,int32_t,uint32_t)
+  625|       |INT_STAGES(64,int64_t,uint64_t)
+  626|       |
+  627|      [0;35m0[0m|stage(narrow_i16) [0;41m{ int8_t  *r=R; int16_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (int8_t )x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  628|      [0;35m0[0m|stage(narrow_i32) [0;41m{ int16_t *r=R; int32_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (int16_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  629|      [0;35m0[0m|stage(narrow_i64) [0;41m{ int32_t *r=R; int64_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (int32_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  630|       |
+  631|      [0;35m0[0m|stage(widen_s8)  [0;41m{ int16_t *r=R; int8_t  *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (int16_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  632|      [0;35m0[0m|stage(widen_s16) [0;41m{ int32_t *r=R; int16_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (int32_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  633|      [0;35m0[0m|stage(widen_s32) [0;41m{ int64_t *r=R; int32_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (int64_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  634|       |
+  635|      [0;35m0[0m|stage(widen_u8)  [0;41m{ uint16_t *r=R; uint8_t  *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (uint16_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  636|      [0;35m0[0m|stage(widen_u16) [0;41m{ uint32_t *r=R; uint16_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (uint32_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  637|      [0;35m0[0m|stage(widen_u32) [0;41m{ uint64_t *r=R; uint32_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (uint64_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  638|       |
+  639|      [0;35m0[0m|V8  weft_narrow_i16(Builder* b, V16 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH, 8,narrow_i16, .x=x.id); }[0m
+  640|      [0;35m0[0m|V16 weft_narrow_i32(Builder* b, V32 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,16,narrow_i32, .x=x.id); }[0m
+  641|      [0;35m0[0m|V32 weft_narrow_i64(Builder* b, V64 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,32,narrow_i64, .x=x.id); }[0m
+  642|       |
+  643|      [0;35m0[0m|V16 weft_widen_s8 (Builder* b, V8  x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,16,widen_s8 , .x=x.id); }[0m
+  644|      [0;35m0[0m|V32 weft_widen_s16(Builder* b, V16 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,32,widen_s16, .x=x.id); }[0m
+  645|      [0;35m0[0m|V64 weft_widen_s32(Builder* b, V32 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,64,widen_s32, .x=x.id); }[0m
+  646|       |
+  647|      [0;35m0[0m|V16 weft_widen_u8 (Builder* b, V8  x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,16,widen_u8 , .x=x.id); }[0m
+  648|      [0;35m0[0m|V32 weft_widen_u16(Builder* b, V16 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,32,widen_u16, .x=x.id); }[0m
+  649|      [0;35m0[0m|V64 weft_widen_u32(Builder* b, V32 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,64,widen_u32, .x=x.id); }[0m
+  650|       |
+  651|      [0;35m0[0m|stage(cast_f16) [0;41m{ int16_t *r=R; __fp16 *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (int16_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  652|      [0;35m0[0m|stage(cast_f32) [0;41m{ int32_t *r=R; float  *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (int32_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  653|      [0;35m0[0m|stage(cast_f64) [0;41m{ int64_t *r=R; double *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (int64_t)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  654|       |
+  655|      [0;35m0[0m|stage(cast_s16) [0;41m{ __fp16 *r=R; int16_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (__fp16)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  656|      [0;35m0[0m|stage(cast_s32) [0;41m{ float  *r=R; int32_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] =  (float)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  657|      [0;35m0[0m|stage(cast_s64) [0;41m{ double *r=R; int64_t *x=[0m[0;41mv[0m[0;41m(I->x); [0m[0;41meach[0m[0;41m [0m[0;41mr[i] = (double)x[i][0m[0;41m; [0m[0;41mnext[0m[0;41m(r+N); }[0m
+  658|       |
+  659|      [0;35m0[0m|V16 weft_cast_f16(Builder* b, V16 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,16,cast_f16, .x=x.id); }[0m
+  660|      [0;35m0[0m|V32 weft_cast_f32(Builder* b, V32 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,32,cast_f32, .x=x.id); }[0m
+  661|      [0;35m0[0m|V64 weft_cast_f64(Builder* b, V64 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,64,cast_f64, .x=x.id); }[0m
+  662|       |
+  663|      [0;35m0[0m|V16 weft_cast_s16(Builder* b, V16 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,16,cast_s16, .x=x.id); }[0m
+  664|      [0;35m0[0m|V32 weft_cast_s32(Builder* b, V32 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,32,cast_s32, .x=x.id); }[0m
+  665|      [0;35m0[0m|V64 weft_cast_s64(Builder* b, V64 x) [0;41m{ return [0m[0;41minst[0m[0;41m(b, MATH,64,cast_s64, .x=x.id); }[0m
+
