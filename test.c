@@ -217,12 +217,33 @@ static size_t no_load_cse(Builder* b) {
     return store_32(b,0, weft_and_32(b,x,y));
 }
 
-static size_t constant_prop(Builder* b) {
+static size_t constant_prop8(Builder* b) {
+    V8 one  = weft_splat_8(b, 1),
+       big  = weft_add_i8(b, one, weft_splat_8(b, 63)),
+       same = weft_shr_s8(b, big, weft_splat_8(b, 6));
+    assert(same.id == one.id);
+    return store_8(b,0, weft_mul_i8(b, weft_load_8(b,1), one));
+}
+static size_t constant_prop16(Builder* b) {
+    V16 one  = weft_splat_16(b, 1),
+        big  = weft_add_i16(b, one, weft_splat_16(b, 63)),
+        same = weft_shr_s16(b, big, weft_splat_16(b, 6));
+    assert(same.id == one.id);
+    return store_16(b,0, weft_mul_i16(b, weft_load_16(b,1), one));
+}
+static size_t constant_prop32(Builder* b) {
     V32 one  = weft_splat_32(b, 1),
         big  = weft_add_i32(b, one, weft_splat_32(b, 63)),
         same = weft_shr_s32(b, big, weft_splat_32(b, 6));
     assert(same.id == one.id);
     return store_32(b,0, weft_mul_i32(b, weft_load_32(b,1), one));
+}
+static size_t constant_prop64(Builder* b) {
+    V64 one  = weft_splat_64(b, 1),
+        big  = weft_add_i64(b, one, weft_splat_64(b, 63)),
+        same = weft_shr_s64(b, big, weft_splat_64(b, 6));
+    assert(same.id == one.id);
+    return store_64(b,0, weft_mul_i64(b, weft_load_64(b,1), one));
 }
 
 static size_t sel_8(Builder* b) {
@@ -294,7 +315,11 @@ int main(void) {
     test(cse);
     test(commutative_sorting);
     test(no_load_cse);
-    test(constant_prop);
+
+    test(constant_prop8);
+    test(constant_prop16);
+    test(constant_prop32);
+    test(constant_prop64);
 
     test(sel_8);
     test(sel_16);
