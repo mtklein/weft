@@ -11,6 +11,7 @@ typedef weft_Program Program;
 typedef weft_V8      V8;
 typedef weft_V16     V16;
 typedef weft_V32     V32;
+typedef weft_V64     V64;
 
 static size_t store_8 (Builder* b, int ptr, V8  x) { weft_store_8 (b, ptr, x); return  8; }
 static size_t store_16(Builder* b, int ptr, V16 x) { weft_store_16(b, ptr, x); return 16; }
@@ -85,6 +86,24 @@ static void test_memset32() {
 
     for (int i = 0; i < len(buf); i++) {
         assert(buf[i] == 0x42431701);
+    }
+
+    free(p);
+}
+static void test_memset64() {
+    Program* p = NULL;
+    {
+        Builder* b = weft_builder();
+        V64 x = weft_splat_64(b, 0x86753098675309);
+        weft_store_64(b,0,x);
+        p = weft_compile(b);
+    }
+
+    int64_t buf[31] = {0};
+    weft_run(p, len(buf), (void*[]){buf});
+
+    for (int i = 0; i < len(buf); i++) {
+        assert(buf[i] == 0x86753098675309);
     }
 
     free(p);
@@ -184,6 +203,7 @@ int main(void) {
     test_memset8();
     test_memset16();
     test_memset32();
+    test_memset64();
 
     test(memcpy8);
     test(memcpy16);
