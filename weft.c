@@ -82,11 +82,10 @@ static void insert_cse(Builder* b, int id, int hash) {
             b->cse[i].id   = id;
             b->cse[i].hash = hash;
             b->cse_len++;
-            return;
+            break;
         }
         i = (i+1) & (b->cse_cap-1);
     }
-    assert(false);
 }
 
 // Each stage writes to R ("result") and calls next() with R incremented past its writes.
@@ -117,7 +116,7 @@ static int constant_prop(Builder* b, const BInst* inst) {
         PInst program[6], *p=program;
 
         const int* arg = &inst->x;
-        int slot[4], slots = 0;
+        int slot[4]={0}, slots = 0;
         for (int i = 0; i < 4; i++) {
             if (arg[i]) {
                 *p++    = (PInst){.fn=b->inst[arg[i]-1].fn, .imm=b->inst[arg[i]-1].imm};
@@ -127,10 +126,10 @@ static int constant_prop(Builder* b, const BInst* inst) {
         }
         *p++ = (PInst){
             .fn  = inst->fn,
-            .x   = inst->x ? slot[0] * N : 0,
-            .y   = inst->y ? slot[1] * N : 0,
-            .z   = inst->z ? slot[2] * N : 0,
-            .w   = inst->w ? slot[3] * N : 0,
+            .x   = slot[0] * N,
+            .y   = slot[1] * N,
+            .z   = slot[2] * N,
+            .w   = slot[3] * N,
             .imm = inst->imm,
         };
         *p++ = (PInst){.fn=done};
