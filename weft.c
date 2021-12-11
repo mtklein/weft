@@ -381,9 +381,9 @@ void weft_store_64(Builder* b, int ptr, V64 x) {
     inst_(b, (BInst){STORE, .fn=store_64, .fn_and_done=store_64_and_done, .x=x.id, .imm=ptr});
 }
 
-
-static const int64_t f16_n0 = 0x8000, f32_n0 = 0x80000000, f64_n0 = (int64_t)0x8000000000000000,
-                     f16_p1 = 0x3c00, f32_p1 = 0x3f800000, f64_p1 =          0x3ff0000000000000;
+static const int16_t f16_n0 = (int16_t)0x8000            , f16_p1=0x3c00;
+static const int32_t f32_n0 = (int32_t)0x80000000        , f32_p1=0x3f800000;
+static const int64_t f64_n0 = (int64_t)0x8000000000000000, f64_p1=0x3ff0000000000000;
 
 static bool is_splat(Builder* b, int id, int64_t imm) {
     return b->inst[id-1].kind == SPLAT

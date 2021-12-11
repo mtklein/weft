@@ -176,7 +176,7 @@ static size_t uniform64(Builder* b) {
     return store_64(b,0, weft_mul_i64(b,x,one));
 }
 
-static size_t arithmetic16(Builder* b) {
+static size_t arithmetic_f16(Builder* b) {
     V16 one = weft_uniform_16(b, 3);
 
     V16 x = weft_load_16(b,1);
@@ -189,7 +189,7 @@ static size_t arithmetic16(Builder* b) {
 
     return store_16(b,0,x);
 }
-static size_t arithmetic32(Builder* b) {
+static size_t arithmetic_f32(Builder* b) {
     V32 one = weft_uniform_32(b, 4);
 
     V32 x = weft_load_32(b,1);
@@ -202,7 +202,7 @@ static size_t arithmetic32(Builder* b) {
 
     return store_32(b,0,x);
 }
-static size_t arithmetic64(Builder* b) {
+static size_t arithmetic_f64(Builder* b) {
     V64 one = weft_uniform_64(b, 5);
 
     V64 x = weft_load_64(b,1);
@@ -212,6 +212,82 @@ static size_t arithmetic64(Builder* b) {
 
     x = weft_mul_f64(b,x,x);
     x = weft_sqrt_f64(b,x);
+
+    return store_64(b,0,x);
+}
+
+static size_t special_cases_f16(Builder* b) {
+    V16 x = weft_load_16(b,1);
+
+    union { __fp16 f; int16_t bits; } n0 = {-0.0}, p1 = {1.0};
+    assert(n0.bits);
+
+    V16 pzero = weft_splat_16(b,       0),
+        nzero = weft_splat_16(b, n0.bits),
+          one = weft_splat_16(b, p1.bits);
+
+    assert(x.id == weft_add_f16(b, x, pzero).id);
+    assert(x.id == weft_add_f16(b, x, nzero).id);
+    assert(x.id == weft_sub_f16(b, x, pzero).id);
+    assert(x.id == weft_sub_f16(b, x, nzero).id);
+    assert(x.id == weft_mul_f16(b, x,   one).id);
+    assert(x.id == weft_div_f16(b, x,   one).id);
+
+    V16 y = weft_load_16(b,1);
+
+    assert(y.id == weft_add_f16(b, pzero, y).id);
+    assert(y.id == weft_add_f16(b, nzero, y).id);
+    assert(y.id == weft_mul_f16(b,   one, y).id);
+
+    return store_16(b,0,x);
+}
+static size_t special_cases_f32(Builder* b) {
+    V32 x = weft_load_32(b,1);
+
+    union { float f; int32_t bits; } n0 = {-0.0}, p1 = {1.0};
+    assert(n0.bits);
+
+    V32 pzero = weft_splat_32(b,       0),
+        nzero = weft_splat_32(b, n0.bits),
+          one = weft_splat_32(b, p1.bits);
+
+    assert(x.id == weft_add_f32(b, x, pzero).id);
+    assert(x.id == weft_add_f32(b, x, nzero).id);
+    assert(x.id == weft_sub_f32(b, x, pzero).id);
+    assert(x.id == weft_sub_f32(b, x, nzero).id);
+    assert(x.id == weft_mul_f32(b, x,   one).id);
+    assert(x.id == weft_div_f32(b, x,   one).id);
+
+    V32 y = weft_load_32(b,1);
+
+    assert(y.id == weft_add_f32(b, pzero, y).id);
+    assert(y.id == weft_add_f32(b, nzero, y).id);
+    assert(y.id == weft_mul_f32(b,   one, y).id);
+
+    return store_32(b,0,x);
+}
+static size_t special_cases_f64(Builder* b) {
+    V64 x = weft_load_64(b,1);
+
+    union { double f; int64_t bits; } n0 = {-0.0}, p1 = {1.0};
+    assert(n0.bits);
+
+    V64 pzero = weft_splat_64(b,       0),
+        nzero = weft_splat_64(b, n0.bits),
+          one = weft_splat_64(b, p1.bits);
+
+    assert(x.id == weft_add_f64(b, x, pzero).id);
+    assert(x.id == weft_add_f64(b, x, nzero).id);
+    assert(x.id == weft_sub_f64(b, x, pzero).id);
+    assert(x.id == weft_sub_f64(b, x, nzero).id);
+    assert(x.id == weft_mul_f64(b, x,   one).id);
+    assert(x.id == weft_div_f64(b, x,   one).id);
+
+    V64 y = weft_load_64(b,1);
+
+    assert(y.id == weft_add_f64(b, pzero, y).id);
+    assert(y.id == weft_add_f64(b, nzero, y).id);
+    assert(y.id == weft_mul_f64(b,   one, y).id);
 
     return store_64(b,0,x);
 }
@@ -339,9 +415,13 @@ int main(void) {
     test(uniform32);
     test(uniform64);
 
-    test(arithmetic16);
-    test(arithmetic32);
-    test(arithmetic64);
+    test(arithmetic_f16);
+    test(arithmetic_f32);
+    test(arithmetic_f64);
+
+    test(special_cases_f16);
+    test(special_cases_f32);
+    test(special_cases_f64);
 
     test(cse);
     test(commutative_sorting);
