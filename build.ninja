@@ -11,6 +11,16 @@ rule link
 rule run
     command = $runtime ./$in > $out
 
+rule collect_coverage
+    command = env LLVM_PROFILE_FILE=$out ./$in
+
+rule index_coverage
+    command = /opt/homebrew/opt/llvm/bin/llvm-profdata merge $in -o $out
+
+rule report_coverage
+    command = /opt/homebrew/opt/llvm/bin/llvm-cov report -show-functions -instr-profile $in $
+            | tail -n +2 > $out
+
 brew         = /opt/homebrew/opt/llvm/bin/clang
 clang_cflags = -fcolor-diagnostics -Xclang -nostdsysteminc -Weverything
 
@@ -21,6 +31,7 @@ xsan   = clang  $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize
 lsan   = $brew  $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
 wasm   = zig cc $clang_cflags -target wasm32-wasi
 gcc    = /opt/homebrew/bin/gcc-11 -fdiagnostics-color -O3
+cov    = $brew  $clang_cflags -fprofile-instr-generate -fcoverage-mapping
 
 build out/opt/weft.o: compile weft.c
     cc = $opt
@@ -84,3 +95,13 @@ build out/gcc/test.o: compile test.c
 build out/gcc/test: link out/gcc/weft.o out/gcc/test.o
     cc = $gcc
 build out/gcc/test.ok: run out/gcc/test
+
+build out/cov/weft.o: compile weft.c
+    cc = $cov
+build out/cov/test.o: compile test.c
+    cc = $cov
+build out/cov/test: link out/cov/weft.o out/cov/test.o
+    cc = $cov
+build out/cov/test.profraw: collect_coverage out/cov/test
+build out/cov/test.profdata:  index_coverage out/cov/test.profraw
+build weft.c.coverage:       report_coverage out/cov/test.profdata out/cov/test weft.c
