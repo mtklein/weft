@@ -119,9 +119,11 @@ static void test(size_t (*fn)(Builder*)) {
            dst[len(src)] = {0};
 
     int64_t one  = 1;
+    __fp16  oneh = (__fp16)1.0f;
     float   onef = 1.0f;
+    double  oned = 1.0;
 
-    weft_run(p, len(src), (void*[]){dst,src,&one,&onef});
+    weft_run(p, len(src), (void*[]){dst,src, &one,&oneh,&onef,&oned});
     free(p);
 
     assert(0 == memcmp(dst,src,(bits/8)*len(src)));
@@ -174,8 +176,21 @@ static size_t uniform64(Builder* b) {
     return store_64(b,0, weft_mul_i64(b,x,one));
 }
 
-static size_t arithmetic(Builder* b) {
-    V32 one = weft_splat_32(b, 0x3f800000);
+static size_t arithmetic16(Builder* b) {
+    V16 one = weft_uniform_16(b, 3);
+
+    V16 x = weft_load_16(b,1);
+    x = weft_add_f16(b,x,one);
+    x = weft_sub_f16(b,x,one);
+    x = weft_div_f16(b,x,one);
+
+    x = weft_mul_f16(b,x,x);
+    x = weft_sqrt_f16(b,x);
+
+    return store_16(b,0,x);
+}
+static size_t arithmetic32(Builder* b) {
+    V32 one = weft_uniform_32(b, 4);
 
     V32 x = weft_load_32(b,1);
     x = weft_add_f32(b,x,one);
@@ -186,6 +201,19 @@ static size_t arithmetic(Builder* b) {
     x = weft_sqrt_f32(b,x);
 
     return store_32(b,0,x);
+}
+static size_t arithmetic64(Builder* b) {
+    V64 one = weft_uniform_64(b, 5);
+
+    V64 x = weft_load_64(b,1);
+    x = weft_add_f64(b,x,one);
+    x = weft_sub_f64(b,x,one);
+    x = weft_div_f64(b,x,one);
+
+    x = weft_mul_f64(b,x,x);
+    x = weft_sqrt_f64(b,x);
+
+    return store_64(b,0,x);
 }
 
 static size_t cse(Builder* b) {
@@ -311,7 +339,10 @@ int main(void) {
     test(uniform32);
     test(uniform64);
 
-    test(arithmetic);
+    test(arithmetic16);
+    test(arithmetic32);
+    test(arithmetic64);
+
     test(cse);
     test(commutative_sorting);
     test(no_load_cse);
