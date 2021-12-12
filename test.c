@@ -116,29 +116,36 @@ static void test(size_t (*fn)(Builder*)) {
     size_t bits = fn(b);
     Program* p = weft_compile(b);
 
-    double src[] = {0,1,2,3,4,5,6,7,8},
-           dst[len(src)] = {0};
+    __fp16 h[] = {0,1,2,3,4,5,6,7,8};
+    float  f[] = {0,1,2,3,4,5,6,7,8};
+    double d[] = {0,1,2,3,4,5,6,7,8};
+
+    void* src = h;
+    if (bits == 32) { src = f; }
+    if (bits == 64) { src = d; }
+
+    double dst[len(h)] = {0};
 
     int64_t one  = 1;
     __fp16  oneh = (__fp16)1.0f;
     float   onef = 1.0f;
     double  oned = 1.0;
 
-    weft_run(p, len(src), (void*[]){dst,src, &one,&oneh,&onef,&oned});
+    weft_run(p, len(h), (void*[]){dst,src, &one,&oneh,&onef,&oned});
     free(p);
 
-    if (0 != memcmp(dst,src, (bits/8)*len(src))) {
+    if (0 != memcmp(dst,src, (bits/8)*len(h))) {
         dprintf(2, "want:");
-        for (size_t i = 0; i < (bits/8)*len(src); i++) {
+        for (size_t i = 0; i < (bits/8)*len(h); i++) {
             dprintf(2, " %02x", ((const uint8_t*)src)[i]);
         }
         dprintf(2, "\ngot: ");
-        for (size_t i = 0; i < (bits/8)*len(src); i++) {
+        for (size_t i = 0; i < (bits/8)*len(h); i++) {
             dprintf(2, " %02x", ((const uint8_t*)dst)[i]);
         }
         dprintf(2, "\n");
     }
-    assert(0 == memcmp(dst,src,(bits/8)*len(src)));
+    assert(0 == memcmp(dst,src,(bits/8)*len(h)));
 }
 
 static size_t memcpy8 (Builder* b) { return store_8 (b,0,weft_load_8 (b,1)); }
@@ -304,6 +311,34 @@ static size_t special_cases_f64(Builder* b) {
     return store_64(b,0,x);
 }
 
+static size_t ceil_floor_f16(Builder* b) {
+    V16 x = weft_load_16(b,1);
+
+    V16 f = weft_floor_f16(b,x),
+        c = weft_sub_f16(b, weft_ceil_f16(b, weft_add_i16(b, x, weft_splat_16(b, 0x1)))
+                          , weft_uniform_16(b,3));
+
+    return store_16(b,0, weft_and_16(b, f,c));
+}
+static size_t ceil_floor_f32(Builder* b) {
+    V32 x = weft_load_32(b,1);
+
+    V32 f = weft_floor_f32(b,x),
+        c = weft_sub_f32(b, weft_ceil_f32(b, weft_add_i32(b, x, weft_splat_32(b, 0x1)))
+                          , weft_uniform_32(b,4));
+
+    return store_32(b,0, weft_and_32(b, f,c));
+}
+static size_t ceil_floor_f64(Builder* b) {
+    V64 x = weft_load_64(b,1);
+
+    V64 f = weft_floor_f64(b,x),
+        c = weft_sub_f64(b, weft_ceil_f64(b, weft_add_i64(b, x, weft_splat_64(b, 0x1)))
+                          , weft_uniform_64(b,5));
+
+    return store_64(b,0, weft_and_64(b, f,c));
+}
+
 static size_t cse(Builder* b) {
     V32 one = weft_splat_32(b, 0x3f800000);
 
@@ -441,6 +476,10 @@ int main(void) {
     test(special_cases_f16);
     test(special_cases_f32);
     test(special_cases_f64);
+
+    test(ceil_floor_f16);
+    test(ceil_floor_f32);
+    test(ceil_floor_f64);
 
     test(cse);
     test(commutative_sorting);

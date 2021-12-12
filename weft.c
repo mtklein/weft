@@ -213,8 +213,9 @@ Program* weft_compile(Builder* b) {
         inst_(b, (BInst){DONE, .fn_and_done=done});
     }
 
-    union {
-        struct { bool live, loop_dependent; };
+    struct {
+        bool live, loop_dependent;
+        bool unusedA, unusedB;
         int slot;
     } *meta = calloc((size_t)b->inst_len, sizeof *meta);
 
