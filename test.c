@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+int dprintf(int, const char*, ...);
 
 #define len(arr) (int)(sizeof(arr) / sizeof(*arr))
 
@@ -126,6 +127,17 @@ static void test(size_t (*fn)(Builder*)) {
     weft_run(p, len(src), (void*[]){dst,src, &one,&oneh,&onef,&oned});
     free(p);
 
+    if (0 != memcmp(dst,src, (bits/8)*len(src))) {
+        dprintf(2, "want:");
+        for (size_t i = 0; i < (bits/8)*len(src); i++) {
+            dprintf(2, " %02x", ((const uint8_t*)src)[i]);
+        }
+        dprintf(2, "\ngot: ");
+        for (size_t i = 0; i < (bits/8)*len(src); i++) {
+            dprintf(2, " %02x", ((const uint8_t*)dst)[i]);
+        }
+        dprintf(2, "\n");
+    }
     assert(0 == memcmp(dst,src,(bits/8)*len(src)));
 }
 
