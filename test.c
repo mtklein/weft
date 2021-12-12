@@ -314,6 +314,13 @@ static size_t commutative_sorting(Builder* b) {
     return store_32(b,0, weft_sub_f32(b,y,one));
 }
 
+static size_t uniform_cse(Builder* b) {
+    V32 x = weft_uniform_32(b,2),
+        y = weft_uniform_32(b,2);
+    assert(x.id == y.id);
+    return store_32(b,0, weft_load_32(b,1));
+}
+
 static size_t no_load_cse(Builder* b) {
     V32 x = weft_load_32(b,1),
         y = weft_load_32(b,1);
@@ -425,6 +432,7 @@ int main(void) {
 
     test(cse);
     test(commutative_sorting);
+    test(uniform_cse);
     test(no_load_cse);
 
     test(constant_prop8);
