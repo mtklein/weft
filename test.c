@@ -342,6 +342,7 @@ static size_t ceil_floor_f16(Builder* b) {
     V16 f = weft_floor_f16(b,x),
         c = weft_sub_f16(b, weft_ceil_f16(b, weft_add_i16(b, x, weft_splat_16(b, 0x1)))
                           , weft_uniform_16(b,3));
+    weft_assert_16(b, weft_eq_f16(b,f,c));
 
     return store_16(b,0, weft_and_16(b, f,c));
 }
@@ -351,6 +352,7 @@ static size_t ceil_floor_f32(Builder* b) {
     V32 f = weft_floor_f32(b,x),
         c = weft_sub_f32(b, weft_ceil_f32(b, weft_add_i32(b, x, weft_splat_32(b, 0x1)))
                           , weft_uniform_32(b,4));
+    weft_assert_32(b, weft_eq_f32(b,f,c));
 
     return store_32(b,0, weft_and_32(b, f,c));
 }
@@ -360,6 +362,7 @@ static size_t ceil_floor_f64(Builder* b) {
     V64 f = weft_floor_f64(b,x),
         c = weft_sub_f64(b, weft_ceil_f64(b, weft_add_i64(b, x, weft_splat_64(b, 0x1)))
                           , weft_uniform_64(b,5));
+    weft_assert_64(b, weft_eq_f64(b,f,c));
 
     return store_64(b,0, weft_and_64(b, f,c));
 }
