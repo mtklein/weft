@@ -89,14 +89,14 @@ static void insert_cse(Builder* b, int id, int hash) {
 }
 
 // Each stage writes to R ("result") and calls next() with R incremented past its writes.
-// Argument x starts at v(I->x); ditto for y,z,w.
+// Argument x starts at v(x); ditto for y,z,w.
 // off tracks weft_run()'s progress [0,n), for offseting varying pointers.
 // When operating on full N-sized chunks, tail is 0; tail is k for the final k<N sized chunk.
 #define stage(name) static void name(const PInst* I, int off, unsigned tail, \
                                      void* restrict V, void* restrict R, void* const ptr[])
 #define each    for (int i = 0; i < N; i++)
 #define next(R) I[1].fn(I+1,off,tail,V,R,ptr); return
-#define v(arg)  (void*)( (char*)V + arg )
+#define v(arg)  (void*)( (char*)V + I->arg )
 
 stage(done) {
     (void)I;
@@ -328,43 +328,43 @@ V32 weft_load_32(Builder* b, int ptr) { return inst(b, LOAD,32,load_32, .imm=ptr
 V64 weft_load_64(Builder* b, int ptr) { return inst(b, LOAD,64,load_64, .imm=ptr); }
 
 stage(store_8) {
-    tail ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*tail)
-         : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*N);
+    tail ? memcpy((int8_t*)ptr[I->imm] + off, v(x), 1*tail)
+         : memcpy((int8_t*)ptr[I->imm] + off, v(x), 1*N);
     next(R);
 }
 stage(store_8_and_done) {
-    tail ? memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*tail)
-         : memcpy((int8_t*)ptr[I->imm] + off, v(I->x), 1*N);
+    tail ? memcpy((int8_t*)ptr[I->imm] + off, v(x), 1*tail)
+         : memcpy((int8_t*)ptr[I->imm] + off, v(x), 1*N);
     (void)R;
 }
 stage(store_16) {
-    tail ? memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*tail)
-         : memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*N);
+    tail ? memcpy((int16_t*)ptr[I->imm] + off, v(x), 2*tail)
+         : memcpy((int16_t*)ptr[I->imm] + off, v(x), 2*N);
     next(R);
 }
 stage(store_16_and_done) {
-    tail ? memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*tail)
-         : memcpy((int16_t*)ptr[I->imm] + off, v(I->x), 2*N);
+    tail ? memcpy((int16_t*)ptr[I->imm] + off, v(x), 2*tail)
+         : memcpy((int16_t*)ptr[I->imm] + off, v(x), 2*N);
     (void)R;
 }
 stage(store_32) {
-    tail ? memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*tail)
-         : memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*N);
+    tail ? memcpy((int32_t*)ptr[I->imm] + off, v(x), 4*tail)
+         : memcpy((int32_t*)ptr[I->imm] + off, v(x), 4*N);
     next(R);
 }
 stage(store_32_and_done) {
-    tail ? memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*tail)
-         : memcpy((int32_t*)ptr[I->imm] + off, v(I->x), 4*N);
+    tail ? memcpy((int32_t*)ptr[I->imm] + off, v(x), 4*tail)
+         : memcpy((int32_t*)ptr[I->imm] + off, v(x), 4*N);
     (void)R;
 }
 stage(store_64) {
-    tail ? memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*tail)
-         : memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*N);
+    tail ? memcpy((int64_t*)ptr[I->imm] + off, v(x), 8*tail)
+         : memcpy((int64_t*)ptr[I->imm] + off, v(x), 8*N);
     next(R);
 }
 stage(store_64_and_done) {
-    tail ? memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*tail)
-         : memcpy((int64_t*)ptr[I->imm] + off, v(I->x), 8*N);
+    tail ? memcpy((int64_t*)ptr[I->imm] + off, v(x), 8*tail)
+         : memcpy((int64_t*)ptr[I->imm] + off, v(x), 8*N);
     (void)R;
 }
 
@@ -402,22 +402,22 @@ static void sort_commutative(int* x, int* y) {
 }
 
 stage(add_f16) {
-    __fp16 *r=R, *x=v(I->x), *y=v(I->y);
+    __fp16 *r=R, *x=v(x), *y=v(y);
     each r[i] = (__fp16)((float)x[i] + (float)y[i]);
     next(r+N);
 }
 stage(sub_f16) {
-    __fp16 *r=R, *x=v(I->x), *y=v(I->y);
+    __fp16 *r=R, *x=v(x), *y=v(y);
     each r[i] = (__fp16)((float)x[i] - (float)y[i]);
     next(r+N);
 }
 stage(mul_f16) {
-    __fp16 *r=R, *x=v(I->x), *y=v(I->y);
+    __fp16 *r=R, *x=v(x), *y=v(y);
     each r[i] = (__fp16)((float)x[i] * (float)y[i]);
     next(r+N);
 }
 stage(div_f16) {
-    __fp16 *r=R, *x=v(I->x), *y=v(I->y);
+    __fp16 *r=R, *x=v(x), *y=v(y);
     each r[i] = (__fp16)((float)x[i] / (float)y[i]);
     next(r+N);
 }
@@ -447,10 +447,10 @@ V16 weft_div_f16(Builder* b, V16 x, V16 y) {
     return inst(b, MATH,16, div_f16, .x=x.id, .y=y.id);
 }
 
-stage(add_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
-stage(sub_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
-stage(mul_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
-stage(div_f32) { float *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]/y[i]; next(r+N); }
+stage(add_f32) { float *r=R, *x=v(x), *y=v(y); each r[i] = x[i]+y[i]; next(r+N); }
+stage(sub_f32) { float *r=R, *x=v(x), *y=v(y); each r[i] = x[i]-y[i]; next(r+N); }
+stage(mul_f32) { float *r=R, *x=v(x), *y=v(y); each r[i] = x[i]*y[i]; next(r+N); }
+stage(div_f32) { float *r=R, *x=v(x), *y=v(y); each r[i] = x[i]/y[i]; next(r+N); }
 
 V32 weft_add_f32(Builder* b, V32 x, V32 y) {
     sort_commutative(&x.id, &y.id);
@@ -477,10 +477,10 @@ V32 weft_div_f32(Builder* b, V32 x, V32 y) {
     return inst(b, MATH,32, div_f32, .x=x.id, .y=y.id);
 }
 
-stage(add_f64) { double *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]+y[i]; next(r+N); }
-stage(sub_f64) { double *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]-y[i]; next(r+N); }
-stage(mul_f64) { double *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]*y[i]; next(r+N); }
-stage(div_f64) { double *r=R, *x=v(I->x), *y=v(I->y); each r[i] = x[i]/y[i]; next(r+N); }
+stage(add_f64) { double *r=R, *x=v(x), *y=v(y); each r[i] = x[i]+y[i]; next(r+N); }
+stage(sub_f64) { double *r=R, *x=v(x), *y=v(y); each r[i] = x[i]-y[i]; next(r+N); }
+stage(mul_f64) { double *r=R, *x=v(x), *y=v(y); each r[i] = x[i]*y[i]; next(r+N); }
+stage(div_f64) { double *r=R, *x=v(x), *y=v(y); each r[i] = x[i]/y[i]; next(r+N); }
 
 V64 weft_add_f64(Builder* b, V64 x, V64 y) {
     sort_commutative(&x.id, &y.id);
@@ -507,15 +507,15 @@ V64 weft_div_f64(Builder* b, V64 x, V64 y) {
     return inst(b, MATH,64, div_f64, .x=x.id, .y=y.id);
 }
 
-stage( ceil_f16) { __fp16 *r=R, *x=v(I->x); each r[i] = (__fp16) ceilf((float)x[i]); next(r+N); }
-stage( ceil_f32) { float  *r=R, *x=v(I->x); each r[i] =          ceilf(       x[i]); next(r+N); }
-stage( ceil_f64) { double *r=R, *x=v(I->x); each r[i] =          ceil (       x[i]); next(r+N); }
-stage(floor_f16) { __fp16 *r=R, *x=v(I->x); each r[i] = (__fp16)floorf((float)x[i]); next(r+N); }
-stage(floor_f32) { float  *r=R, *x=v(I->x); each r[i] =         floorf(       x[i]); next(r+N); }
-stage(floor_f64) { double *r=R, *x=v(I->x); each r[i] =         floor (       x[i]); next(r+N); }
-stage( sqrt_f16) { __fp16 *r=R, *x=v(I->x); each r[i] = (__fp16) sqrtf((float)x[i]); next(r+N); }
-stage( sqrt_f32) { float  *r=R, *x=v(I->x); each r[i] =          sqrtf(       x[i]); next(r+N); }
-stage( sqrt_f64) { double *r=R, *x=v(I->x); each r[i] =          sqrt (       x[i]); next(r+N); }
+stage( ceil_f16) { __fp16 *r=R, *x=v(x); each r[i] = (__fp16) ceilf((float)x[i]); next(r+N); }
+stage( ceil_f32) { float  *r=R, *x=v(x); each r[i] =          ceilf(       x[i]); next(r+N); }
+stage( ceil_f64) { double *r=R, *x=v(x); each r[i] =          ceil (       x[i]); next(r+N); }
+stage(floor_f16) { __fp16 *r=R, *x=v(x); each r[i] = (__fp16)floorf((float)x[i]); next(r+N); }
+stage(floor_f32) { float  *r=R, *x=v(x); each r[i] =         floorf(       x[i]); next(r+N); }
+stage(floor_f64) { double *r=R, *x=v(x); each r[i] =         floor (       x[i]); next(r+N); }
+stage( sqrt_f16) { __fp16 *r=R, *x=v(x); each r[i] = (__fp16) sqrtf((float)x[i]); next(r+N); }
+stage( sqrt_f32) { float  *r=R, *x=v(x); each r[i] =          sqrtf(       x[i]); next(r+N); }
+stage( sqrt_f64) { double *r=R, *x=v(x); each r[i] =          sqrt (       x[i]); next(r+N); }
 
 V16  weft_ceil_f16(Builder* b, V16 x) { return inst(b, MATH,16, ceil_f16, .x=x.id); }
 V32  weft_ceil_f32(Builder* b, V32 x) { return inst(b, MATH,32, ceil_f32, .x=x.id); }
@@ -528,11 +528,11 @@ V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.i
 V64  weft_sqrt_f64(Builder* b, V64 x) { return inst(b, MATH,64, sqrt_f64, .x=x.id); }
 
 #define FLOAT_COMPARISONS(B,S,T,M) \
-    stage(eq_f##B){S *r=R; T *x=v(I->x),*y=v(I->y); each r[i]=(M)x[i]==(M)y[i]?-1:0; next(r+N);} \
-    stage(lt_f##B){S *r=R; T *x=v(I->x),*y=v(I->y); each r[i]=(M)x[i]< (M)y[i]?-1:0; next(r+N);} \
-    stage(le_f##B){S *r=R; T *x=v(I->x),*y=v(I->y); each r[i]=(M)x[i]<=(M)y[i]?-1:0; next(r+N);} \
-    stage(gt_f##B){S *r=R; T *x=v(I->x),*y=v(I->y); each r[i]=(M)x[i]> (M)y[i]?-1:0; next(r+N);} \
-    stage(ge_f##B){S *r=R; T *x=v(I->x),*y=v(I->y); each r[i]=(M)x[i]>=(M)y[i]?-1:0; next(r+N);}
+    stage(eq_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]==(M)y[i]?-1:0; next(r+N);} \
+    stage(lt_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]< (M)y[i]?-1:0; next(r+N);} \
+    stage(le_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]<=(M)y[i]?-1:0; next(r+N);} \
+    stage(gt_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]> (M)y[i]?-1:0; next(r+N);} \
+    stage(ge_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]>=(M)y[i]?-1:0; next(r+N);}
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wfloat-equal"
@@ -563,132 +563,132 @@ V64 weft_gt_f64(Builder* b, V64 x, V64 y) { return inst(b, MATH,64,gt_f64, .x=x.
 V64 weft_ge_f64(Builder* b, V64 x, V64 y) { return inst(b, MATH,64,ge_f64, .x=x.id, .y=y.id); }
 
 #define INT_STAGES(B,S,U) \
-    stage(not_  ##B) {S *r=R, *x=v(I->x);             each r[i] =   ~x[i]         ; next(r+N);}  \
-    stage(add_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] +  y[i] ; next(r+N);}  \
-    stage(sub_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] -  y[i] ; next(r+N);}  \
-    stage(mul_i ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] *  y[i] ; next(r+N);}  \
-    stage(shlv_i##B) {S *r=R, *x=v(I->x), *y=v(I->y); each r[i] =(S)(x[i] << y[i]); next(r+N);}  \
-    stage(shrv_s##B) {S *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] >> y[i] ; next(r+N);}  \
-    stage(shrv_u##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] >> y[i] ; next(r+N);}  \
-    stage(shli_i##B) {S *r=R, *x=v(I->x);             each r[i] =(S)(x[i]<<I->imm); next(r+N);}  \
-    stage(shri_s##B) {S *r=R, *x=v(I->x);             each r[i] =    x[i]>>I->imm ; next(r+N);}  \
-    stage(shri_u##B) {U *r=R, *x=v(I->x);             each r[i] =    x[i]>>I->imm ; next(r+N);}  \
-    stage(and_  ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] &  y[i] ; next(r+N);}  \
-    stage(bic_  ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] & ~y[i] ; next(r+N);}  \
-    stage( or_  ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] |  y[i] ; next(r+N);}  \
-    stage(xor_  ##B) {U *r=R, *x=v(I->x), *y=v(I->y); each r[i] =    x[i] ^  y[i] ; next(r+N);}  \
-    stage(sel_  ##B) {                                                                           \
-        U *r=R, *x=v(I->x), *y=v(I->y), *z=v(I->z);                                              \
-        each r[i] = ( x[i] & y[i])                                                               \
-                  | (~x[i] & z[i]);                                                              \
-        next(r+N);                                                                               \
-    }                                                                                            \
-    stage(eq_i##B) { S *r=R,*x=v(I->x),*y=v(I->y); each r[i] = x[i]==y[i] ?   -1:0; next(r+N); } \
-    stage(lt_s##B) { S *r=R,*x=v(I->x),*y=v(I->y); each r[i] = x[i]< y[i] ?   -1:0; next(r+N); } \
-    stage(lt_u##B) { U *r=R,*x=v(I->x),*y=v(I->y); each r[i] = x[i]< y[i] ?(U)-1:0; next(r+N); } \
-                                                                                                 \
-    V##B weft_not_ ##B(Builder* b, V##B x) { return inst(b, MATH,B,not_##B, .x=x.id); }          \
-    V##B weft_add_i##B(Builder* b, V##B x, V##B y) {                                             \
-        sort_commutative(&x.id, &y.id);                                                          \
-        if (is_splat(b,y.id, 0)) { return x; }                                                   \
-        if (is_splat(b,x.id, 0)) { return y; }                                                   \
-        return inst(b, MATH,B,add_i##B, .x=x.id, .y=y.id);                                       \
-    }                                                                                            \
-    V##B weft_sub_i##B(Builder* b, V##B x, V##B y) {                                             \
-        if (is_splat(b,y.id, 0)) { return x; }                                                   \
-        return inst(b, MATH,B,sub_i##B, .x=x.id, .y=y.id);                                       \
-    }                                                                                            \
-    V##B weft_mul_i##B(Builder* b, V##B x, V##B y) {                                             \
-        sort_commutative(&x.id, &y.id);                                                          \
-        if (is_splat(b,y.id, 0)) { return y; }                                                   \
-        if (is_splat(b,x.id, 0)) { return x; }                                                   \
-        if (is_splat(b,y.id, 1)) { return x; }                                                   \
-        if (is_splat(b,x.id, 1)) { return y; }                                                   \
-        return inst(b, MATH,B,mul_i##B, .x=x.id, .y=y.id);                                       \
-    }                                                                                            \
-    V##B weft_shl_i##B(Builder* b, V##B x, V##B y) {                                             \
-        if (is_splat(b,y.id,0)) { return x; }                                                    \
-        for (int64_t imm; any_splat(b,y.id,&imm);) {                                             \
-            return inst(b, MATH,B,shli_i##B, .x=x.id, .imm=imm);                                 \
-        }                                                                                        \
-        return inst(b, MATH,B,shlv_i##B, .x=x.id, .y=y.id);                                      \
-    }                                                                                            \
-    V##B weft_shr_s##B(Builder* b, V##B x, V##B y) {                                             \
-        if (is_splat(b,y.id,0)) { return x; }                                                    \
-        for (int64_t imm; any_splat(b,y.id,&imm);) {                                             \
-            return inst(b, MATH,B,shri_s##B, .x=x.id, .imm=imm);                                 \
-        }                                                                                        \
-        return inst(b, MATH,B,shrv_s##B, .x=x.id, .y=y.id);                                      \
-    }                                                                                            \
-    V##B weft_shr_u##B(Builder* b, V##B x, V##B y) {                                             \
-        if (is_splat(b,y.id,0)) { return x; }                                                    \
-        for (int64_t imm; any_splat(b,y.id,&imm);) {                                             \
-            return inst(b, MATH,B,shri_u##B, .x=x.id, .imm=imm);                                 \
-        }                                                                                        \
-        return inst(b, MATH,B,shrv_u##B, .x=x.id, .y=y.id);                                      \
-    }                                                                                            \
-    V##B weft_and_##B(Builder* b, V##B x, V##B y) {                                              \
-        sort_commutative(&x.id, &y.id);                                                          \
-        if (x.id == y.id) { return x; }                                                          \
-        if (is_splat(b,y.id, 0)) { return y; }                                                   \
-        if (is_splat(b,x.id, 0)) { return x; }                                                   \
-        if (is_splat(b,y.id,-1)) { return x; }                                                   \
-        if (is_splat(b,x.id,-1)) { return y; }                                                   \
-        return inst(b, MATH,B,and_##B, .x=x.id, .y=y.id);                                        \
-    }                                                                                            \
-    V##B weft_or_##B(Builder* b, V##B x, V##B y) {                                               \
-        sort_commutative(&x.id, &y.id);                                                          \
-        if (x.id == y.id) { return x; }                                                          \
-        if (is_splat(b,y.id, 0)) { return x; }                                                   \
-        if (is_splat(b,x.id, 0)) { return y; }                                                   \
-        if (is_splat(b,y.id,-1)) { return y; }                                                   \
-        if (is_splat(b,x.id,-1)) { return x; }                                                   \
-        return inst(b, MATH,B,or_##B, .x=x.id, .y=y.id);                                         \
-    }                                                                                            \
-    V##B weft_xor_##B(Builder* b, V##B x, V##B y) {                                              \
-        sort_commutative(&x.id, &y.id);                                                          \
-        if (x.id == y.id) { return weft_splat_##B(b,0); }                                        \
-        if (is_splat(b,y.id, 0)) { return x; }                                                   \
-        if (is_splat(b,x.id, 0)) { return y; }                                                   \
-        return inst(b, MATH,B,xor_##B, .x=x.id, .y=y.id);                                        \
-    }                                                                                            \
-    V##B weft_sel_##B(Builder* b, V##B x, V##B y, V##B z) {                                      \
-        if (is_splat(b,x.id, 0)) { return z; }                                                   \
-        if (is_splat(b,x.id,-1)) { return y; }                                                   \
-        if (is_splat(b,z.id, 0)) { return weft_and_##B(b,x,y); }                                 \
-        if (is_splat(b,y.id, 0)) { return inst(b, MATH,B,bic_##B, .x=z.id, .y=x.id); }           \
-        return inst(b, MATH,B,sel_##B, .x=x.id, .y=y.id, .z=z.id);                               \
-    }                                                                                            \
-    V##B weft_eq_i##B(Builder* b, V##B x, V##B y) {                                              \
-        sort_commutative(&x.id, &y.id);                                                          \
-        if (x.id == y.id) { return weft_splat_##B(b,-1); }                                       \
-        return inst(b, MATH,B,eq_i##B, .x=x.id, .y=y.id);                                        \
-    }                                                                                            \
-    V##B weft_lt_s##B(Builder* b, V##B x, V##B y) {                                              \
-        if (x.id == y.id) { return weft_splat_##B(b, 0); }                                       \
-        return inst(b, MATH,B,lt_s##B, .x=x.id, .y=y.id);                                        \
-    }                                                                                            \
-    V##B weft_lt_u##B(Builder* b, V##B x, V##B y) {                                              \
-        if (x.id == y.id) { return weft_splat_##B(b, 0); }                                       \
-        return inst(b, MATH,B,lt_u##B, .x=x.id, .y=y.id);                                        \
-    }                                                                                            \
+    stage(not_  ##B) {S *r=R, *x=v(x);          each r[i] =     ~x[i]         ; next(r+N);}  \
+    stage(shli_i##B) {S *r=R, *x=v(x);          each r[i] =  (S)(x[i]<<I->imm); next(r+N);}  \
+    stage(shri_s##B) {S *r=R, *x=v(x);          each r[i] =      x[i]>>I->imm ; next(r+N);}  \
+    stage(shri_u##B) {U *r=R, *x=v(x);          each r[i] =      x[i]>>I->imm ; next(r+N);}  \
+    stage(shlv_i##B) {S *r=R, *x=v(x), *y=v(y); each r[i] =  (S)(x[i] << y[i]); next(r+N);}  \
+    stage(shrv_s##B) {S *r=R, *x=v(x), *y=v(y); each r[i] =      x[i] >> y[i] ; next(r+N);}  \
+    stage(shrv_u##B) {U *r=R, *x=v(x), *y=v(y); each r[i] =      x[i] >> y[i] ; next(r+N);}  \
+    stage(add_i ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] =      x[i] +  y[i] ; next(r+N);}  \
+    stage(sub_i ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] =      x[i] -  y[i] ; next(r+N);}  \
+    stage(mul_i ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] =      x[i] *  y[i] ; next(r+N);}  \
+    stage(and_  ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] =      x[i] &  y[i] ; next(r+N);}  \
+    stage(bic_  ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] =      x[i] & ~y[i] ; next(r+N);}  \
+    stage( or_  ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] =      x[i] |  y[i] ; next(r+N);}  \
+    stage(xor_  ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] =      x[i] ^  y[i] ; next(r+N);}  \
+    stage(eq_i  ##B) {S *r=R, *x=v(x), *y=v(y); each r[i] = x[i]==y[i]?   -1:0; next(r+N);}  \
+    stage(lt_s  ##B) {S *r=R, *x=v(x), *y=v(y); each r[i] = x[i]< y[i]?   -1:0; next(r+N);}  \
+    stage(lt_u  ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] = x[i]< y[i]?(U)-1:0; next(r+N);}  \
+    stage(sel_  ##B) {                                                                       \
+        U *r=R, *x=v(x), *y=v(y), *z=v(z);                                                   \
+        each r[i] = ( x[i] & y[i])                                                           \
+                  | (~x[i] & z[i]);                                                          \
+        next(r+N);                                                                           \
+    }                                                                                        \
+                                                                                             \
+    V##B weft_not_ ##B(Builder* b, V##B x) { return inst(b, MATH,B,not_##B, .x=x.id); }      \
+    V##B weft_add_i##B(Builder* b, V##B x, V##B y) {                                         \
+        sort_commutative(&x.id, &y.id);                                                      \
+        if (is_splat(b,y.id, 0)) { return x; }                                               \
+        if (is_splat(b,x.id, 0)) { return y; }                                               \
+        return inst(b, MATH,B,add_i##B, .x=x.id, .y=y.id);                                   \
+    }                                                                                        \
+    V##B weft_sub_i##B(Builder* b, V##B x, V##B y) {                                         \
+        if (is_splat(b,y.id, 0)) { return x; }                                               \
+        return inst(b, MATH,B,sub_i##B, .x=x.id, .y=y.id);                                   \
+    }                                                                                        \
+    V##B weft_mul_i##B(Builder* b, V##B x, V##B y) {                                         \
+        sort_commutative(&x.id, &y.id);                                                      \
+        if (is_splat(b,y.id, 0)) { return y; }                                               \
+        if (is_splat(b,x.id, 0)) { return x; }                                               \
+        if (is_splat(b,y.id, 1)) { return x; }                                               \
+        if (is_splat(b,x.id, 1)) { return y; }                                               \
+        return inst(b, MATH,B,mul_i##B, .x=x.id, .y=y.id);                                   \
+    }                                                                                        \
+    V##B weft_shl_i##B(Builder* b, V##B x, V##B y) {                                         \
+        if (is_splat(b,y.id,0)) { return x; }                                                \
+        for (int64_t imm; any_splat(b,y.id,&imm);) {                                         \
+            return inst(b, MATH,B,shli_i##B, .x=x.id, .imm=imm);                             \
+        }                                                                                    \
+        return inst(b, MATH,B,shlv_i##B, .x=x.id, .y=y.id);                                  \
+    }                                                                                        \
+    V##B weft_shr_s##B(Builder* b, V##B x, V##B y) {                                         \
+        if (is_splat(b,y.id,0)) { return x; }                                                \
+        for (int64_t imm; any_splat(b,y.id,&imm);) {                                         \
+            return inst(b, MATH,B,shri_s##B, .x=x.id, .imm=imm);                             \
+        }                                                                                    \
+        return inst(b, MATH,B,shrv_s##B, .x=x.id, .y=y.id);                                  \
+    }                                                                                        \
+    V##B weft_shr_u##B(Builder* b, V##B x, V##B y) {                                         \
+        if (is_splat(b,y.id,0)) { return x; }                                                \
+        for (int64_t imm; any_splat(b,y.id,&imm);) {                                         \
+            return inst(b, MATH,B,shri_u##B, .x=x.id, .imm=imm);                             \
+        }                                                                                    \
+        return inst(b, MATH,B,shrv_u##B, .x=x.id, .y=y.id);                                  \
+    }                                                                                        \
+    V##B weft_and_##B(Builder* b, V##B x, V##B y) {                                          \
+        sort_commutative(&x.id, &y.id);                                                      \
+        if (x.id == y.id) { return x; }                                                      \
+        if (is_splat(b,y.id, 0)) { return y; }                                               \
+        if (is_splat(b,x.id, 0)) { return x; }                                               \
+        if (is_splat(b,y.id,-1)) { return x; }                                               \
+        if (is_splat(b,x.id,-1)) { return y; }                                               \
+        return inst(b, MATH,B,and_##B, .x=x.id, .y=y.id);                                    \
+    }                                                                                        \
+    V##B weft_or_##B(Builder* b, V##B x, V##B y) {                                           \
+        sort_commutative(&x.id, &y.id);                                                      \
+        if (x.id == y.id) { return x; }                                                      \
+        if (is_splat(b,y.id, 0)) { return x; }                                               \
+        if (is_splat(b,x.id, 0)) { return y; }                                               \
+        if (is_splat(b,y.id,-1)) { return y; }                                               \
+        if (is_splat(b,x.id,-1)) { return x; }                                               \
+        return inst(b, MATH,B,or_##B, .x=x.id, .y=y.id);                                     \
+    }                                                                                        \
+    V##B weft_xor_##B(Builder* b, V##B x, V##B y) {                                          \
+        sort_commutative(&x.id, &y.id);                                                      \
+        if (x.id == y.id) { return weft_splat_##B(b,0); }                                    \
+        if (is_splat(b,y.id, 0)) { return x; }                                               \
+        if (is_splat(b,x.id, 0)) { return y; }                                               \
+        return inst(b, MATH,B,xor_##B, .x=x.id, .y=y.id);                                    \
+    }                                                                                        \
+    V##B weft_sel_##B(Builder* b, V##B x, V##B y, V##B z) {                                  \
+        if (is_splat(b,x.id, 0)) { return z; }                                               \
+        if (is_splat(b,x.id,-1)) { return y; }                                               \
+        if (is_splat(b,z.id, 0)) { return weft_and_##B(b,x,y); }                             \
+        if (is_splat(b,y.id, 0)) { return inst(b, MATH,B,bic_##B, .x=z.id, .y=x.id); }       \
+        return inst(b, MATH,B,sel_##B, .x=x.id, .y=y.id, .z=z.id);                           \
+    }                                                                                        \
+    V##B weft_eq_i##B(Builder* b, V##B x, V##B y) {                                          \
+        sort_commutative(&x.id, &y.id);                                                      \
+        if (x.id == y.id) { return weft_splat_##B(b,-1); }                                   \
+        return inst(b, MATH,B,eq_i##B, .x=x.id, .y=y.id);                                    \
+    }                                                                                        \
+    V##B weft_lt_s##B(Builder* b, V##B x, V##B y) {                                          \
+        if (x.id == y.id) { return weft_splat_##B(b, 0); }                                   \
+        return inst(b, MATH,B,lt_s##B, .x=x.id, .y=y.id);                                    \
+    }                                                                                        \
+    V##B weft_lt_u##B(Builder* b, V##B x, V##B y) {                                          \
+        if (x.id == y.id) { return weft_splat_##B(b, 0); }                                   \
+        return inst(b, MATH,B,lt_u##B, .x=x.id, .y=y.id);                                    \
+    }                                                                                        \
 
 INT_STAGES( 8, int8_t, uint8_t)
 INT_STAGES(16,int16_t,uint16_t)
 INT_STAGES(32,int32_t,uint32_t)
 INT_STAGES(64,int64_t,uint64_t)
 
-stage(narrow_i16) { int8_t  *r=R; int16_t *x=v(I->x); each r[i] = (int8_t )x[i]; next(r+N); }
-stage(narrow_i32) { int16_t *r=R; int32_t *x=v(I->x); each r[i] = (int16_t)x[i]; next(r+N); }
-stage(narrow_i64) { int32_t *r=R; int64_t *x=v(I->x); each r[i] = (int32_t)x[i]; next(r+N); }
+stage(narrow_i16) { int8_t  *r=R; int16_t *x=v(x); each r[i] = (int8_t )x[i]; next(r+N); }
+stage(narrow_i32) { int16_t *r=R; int32_t *x=v(x); each r[i] = (int16_t)x[i]; next(r+N); }
+stage(narrow_i64) { int32_t *r=R; int64_t *x=v(x); each r[i] = (int32_t)x[i]; next(r+N); }
 
-stage(widen_s8)  { int16_t *r=R; int8_t  *x=v(I->x); each r[i] = (int16_t)x[i]; next(r+N); }
-stage(widen_s16) { int32_t *r=R; int16_t *x=v(I->x); each r[i] = (int32_t)x[i]; next(r+N); }
-stage(widen_s32) { int64_t *r=R; int32_t *x=v(I->x); each r[i] = (int64_t)x[i]; next(r+N); }
+stage(widen_s8)  { int16_t *r=R; int8_t  *x=v(x); each r[i] = (int16_t)x[i]; next(r+N); }
+stage(widen_s16) { int32_t *r=R; int16_t *x=v(x); each r[i] = (int32_t)x[i]; next(r+N); }
+stage(widen_s32) { int64_t *r=R; int32_t *x=v(x); each r[i] = (int64_t)x[i]; next(r+N); }
 
-stage(widen_u8)  { uint16_t *r=R; uint8_t  *x=v(I->x); each r[i] = (uint16_t)x[i]; next(r+N); }
-stage(widen_u16) { uint32_t *r=R; uint16_t *x=v(I->x); each r[i] = (uint32_t)x[i]; next(r+N); }
-stage(widen_u32) { uint64_t *r=R; uint32_t *x=v(I->x); each r[i] = (uint64_t)x[i]; next(r+N); }
+stage(widen_u8)  { uint16_t *r=R; uint8_t  *x=v(x); each r[i] = (uint16_t)x[i]; next(r+N); }
+stage(widen_u16) { uint32_t *r=R; uint16_t *x=v(x); each r[i] = (uint32_t)x[i]; next(r+N); }
+stage(widen_u32) { uint64_t *r=R; uint32_t *x=v(x); each r[i] = (uint64_t)x[i]; next(r+N); }
 
 V8  weft_narrow_i16(Builder* b, V16 x) { return inst(b, MATH, 8,narrow_i16, .x=x.id); }
 V16 weft_narrow_i32(Builder* b, V32 x) { return inst(b, MATH,16,narrow_i32, .x=x.id); }
@@ -702,13 +702,13 @@ V16 weft_widen_u8 (Builder* b, V8  x) { return inst(b, MATH,16,widen_u8 , .x=x.i
 V32 weft_widen_u16(Builder* b, V16 x) { return inst(b, MATH,32,widen_u16, .x=x.id); }
 V64 weft_widen_u32(Builder* b, V32 x) { return inst(b, MATH,64,widen_u32, .x=x.id); }
 
-stage(cast_f16) { int16_t *r=R; __fp16 *x=v(I->x); each r[i] = (int16_t)x[i]; next(r+N); }
-stage(cast_f32) { int32_t *r=R; float  *x=v(I->x); each r[i] = (int32_t)x[i]; next(r+N); }
-stage(cast_f64) { int64_t *r=R; double *x=v(I->x); each r[i] = (int64_t)x[i]; next(r+N); }
+stage(cast_f16) { int16_t *r=R; __fp16 *x=v(x); each r[i] = (int16_t)x[i]; next(r+N); }
+stage(cast_f32) { int32_t *r=R; float  *x=v(x); each r[i] = (int32_t)x[i]; next(r+N); }
+stage(cast_f64) { int64_t *r=R; double *x=v(x); each r[i] = (int64_t)x[i]; next(r+N); }
 
-stage(cast_s16) { __fp16 *r=R; int16_t *x=v(I->x); each r[i] = (__fp16)x[i]; next(r+N); }
-stage(cast_s32) { float  *r=R; int32_t *x=v(I->x); each r[i] =  (float)x[i]; next(r+N); }
-stage(cast_s64) { double *r=R; int64_t *x=v(I->x); each r[i] = (double)x[i]; next(r+N); }
+stage(cast_s16) { __fp16 *r=R; int16_t *x=v(x); each r[i] = (__fp16)x[i]; next(r+N); }
+stage(cast_s32) { float  *r=R; int32_t *x=v(x); each r[i] =  (float)x[i]; next(r+N); }
+stage(cast_s64) { double *r=R; int64_t *x=v(x); each r[i] = (double)x[i]; next(r+N); }
 
 V16 weft_cast_f16(Builder* b, V16 x) { return inst(b, MATH,16,cast_f16, .x=x.id); }
 V32 weft_cast_f32(Builder* b, V32 x) { return inst(b, MATH,32,cast_f32, .x=x.id); }
