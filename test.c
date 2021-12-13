@@ -174,6 +174,31 @@ static size_t store_twice64(Builder* b) {
     return store_64(b,0, weft_xor_64(b, weft_load_64(b,0), one));
 }
 
+static size_t notnot8(Builder* b) {
+    V8 x = weft_load_8(b,1);
+    x = weft_not_8(b,x);
+    x = weft_not_8(b,x);
+    return store_8(b,0,x);
+}
+static size_t notnot16(Builder* b) {
+    V16 x = weft_load_16(b,1);
+    x = weft_not_16(b,x);
+    x = weft_not_16(b,x);
+    return store_16(b,0,x);
+}
+static size_t notnot32(Builder* b) {
+    V32 x = weft_load_32(b,1);
+    x = weft_not_32(b,x);
+    x = weft_not_32(b,x);
+    return store_32(b,0,x);
+}
+static size_t notnot64(Builder* b) {
+    V64 x = weft_load_64(b,1);
+    x = weft_not_64(b,x);
+    x = weft_not_64(b,x);
+    return store_64(b,0,x);
+}
+
 static size_t uniform8(Builder* b) {
     V8 x   = weft_load_8   (b, 1),
        one = weft_uniform_8(b, 2);
@@ -463,6 +488,11 @@ int main(void) {
     test(store_twice16);
     test(store_twice32);
     test(store_twice64);
+
+    test(notnot8);
+    test(notnot16);
+    test(notnot32);
+    test(notnot64);
 
     test(uniform8);
     test(uniform16);
