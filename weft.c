@@ -34,8 +34,8 @@ typedef struct weft_Program {
 typedef struct {
     enum { MATH, SPLAT, UNIFORM, LOAD, SIDE_EFFECT } kind;
     int slots;
-    void (*fn         )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    void (*fn_and_done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
+    void (*fn  )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
+    void (*done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
     int x,y,z,w;  // All BInst/Builder value IDs are 1-indexed so 0 can mean unused, N/A, etc.
     int64_t imm;
 } BInst;
@@ -208,8 +208,8 @@ void weft_run(const weft_Program* p, int n, void* const ptr[]) {
 }
 
 Program* weft_compile(Builder* b) {
-    if (b->inst_len == 0 || !b->inst[b->inst_len-1].fn_and_done) {
-        inst_(b, (BInst){SIDE_EFFECT, .fn_and_done=done});
+    if (b->inst_len == 0 || !b->inst[b->inst_len-1].done) {
+        inst_(b, (BInst){SIDE_EFFECT, .done=done});
     }
 
     struct {
@@ -255,7 +255,7 @@ Program* weft_compile(Builder* b) {
             if (meta[i].live && meta[i].loop_dependent == loop_dependent) {
                 const BInst inst = b->inst[i];
                 p->inst[insts++] = (PInst) {
-                    .fn  = (i == b->inst_len-1) ? inst.fn_and_done : inst.fn,
+                    .fn  = (i == b->inst_len-1) ? inst.done : inst.fn,
                     .x   = inst.x ? meta[inst.x-1].slot * N : 0,
                     .y   = inst.y ? meta[inst.y-1].slot * N : 0,
                     .z   = inst.z ? meta[inst.z-1].slot * N : 0,
@@ -332,7 +332,7 @@ stage(store_8) {
          : memcpy((int8_t*)ptr[inst->imm] + off, v(x), 1*N);
     next(R);
 }
-stage(store_8_and_done) {
+stage(store_8_done) {
     tail ? memcpy((int8_t*)ptr[inst->imm] + off, v(x), 1*tail)
          : memcpy((int8_t*)ptr[inst->imm] + off, v(x), 1*N);
     (void)R;
@@ -342,7 +342,7 @@ stage(store_16) {
          : memcpy((int16_t*)ptr[inst->imm] + off, v(x), 2*N);
     next(R);
 }
-stage(store_16_and_done) {
+stage(store_16_done) {
     tail ? memcpy((int16_t*)ptr[inst->imm] + off, v(x), 2*tail)
          : memcpy((int16_t*)ptr[inst->imm] + off, v(x), 2*N);
     (void)R;
@@ -352,7 +352,7 @@ stage(store_32) {
          : memcpy((int32_t*)ptr[inst->imm] + off, v(x), 4*N);
     next(R);
 }
-stage(store_32_and_done) {
+stage(store_32_done) {
     tail ? memcpy((int32_t*)ptr[inst->imm] + off, v(x), 4*tail)
          : memcpy((int32_t*)ptr[inst->imm] + off, v(x), 4*N);
     (void)R;
@@ -362,23 +362,23 @@ stage(store_64) {
          : memcpy((int64_t*)ptr[inst->imm] + off, v(x), 8*N);
     next(R);
 }
-stage(store_64_and_done) {
+stage(store_64_done) {
     tail ? memcpy((int64_t*)ptr[inst->imm] + off, v(x), 8*tail)
          : memcpy((int64_t*)ptr[inst->imm] + off, v(x), 8*N);
     (void)R;
 }
 
 void weft_store_8 (Builder* b, int ptr, V8  x) {
-    inst_(b, (BInst){SIDE_EFFECT, .fn=store_8 , .fn_and_done=store_8_and_done , .x=x.id, .imm=ptr});
+    inst_(b, (BInst){SIDE_EFFECT, .fn=store_8 , .done=store_8_done , .x=x.id, .imm=ptr});
 }
 void weft_store_16(Builder* b, int ptr, V16 x) {
-    inst_(b, (BInst){SIDE_EFFECT, .fn=store_16, .fn_and_done=store_16_and_done, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){SIDE_EFFECT, .fn=store_16, .done=store_16_done, .x=x.id, .imm=ptr});
 }
 void weft_store_32(Builder* b, int ptr, V32 x) {
-    inst_(b, (BInst){SIDE_EFFECT, .fn=store_32, .fn_and_done=store_32_and_done, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){SIDE_EFFECT, .fn=store_32, .done=store_32_done, .x=x.id, .imm=ptr});
 }
 void weft_store_64(Builder* b, int ptr, V64 x) {
-    inst_(b, (BInst){SIDE_EFFECT, .fn=store_64, .fn_and_done=store_64_and_done, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){SIDE_EFFECT, .fn=store_64, .done=store_64_done, .x=x.id, .imm=ptr});
 }
 
 stage(assert_8)  { int8_t  *x=v(x); each assert(x[i]); next(R); }
