@@ -32,7 +32,7 @@ typedef struct weft_Program {
 } Program;
 
 typedef struct {
-    enum { MATH, SPLAT, UNIFORM, LOAD, STORE, DONE } kind;
+    enum { MATH, SPLAT, UNIFORM, LOAD, SIDE_EFFECT } kind;
     int slots;
     void (*fn         )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
     void (*fn_and_done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
@@ -209,7 +209,7 @@ void weft_run(const weft_Program* p, int n, void* const ptr[]) {
 
 Program* weft_compile(Builder* b) {
     if (b->inst_len == 0 || !b->inst[b->inst_len-1].fn_and_done) {
-        inst_(b, (BInst){DONE, .fn_and_done=done});
+        inst_(b, (BInst){SIDE_EFFECT, .fn_and_done=done});
     }
 
     struct {
@@ -221,7 +221,7 @@ Program* weft_compile(Builder* b) {
     int live_insts = 0;
     for (int i = b->inst_len; i --> 0;) {
         const BInst inst = b->inst[i];
-        if (inst.kind >= STORE) {
+        if (inst.kind >= SIDE_EFFECT) {
             meta[i].live = true;
         }
         if (meta[i].live) {
@@ -369,16 +369,16 @@ stage(store_64_and_done) {
 }
 
 void weft_store_8 (Builder* b, int ptr, V8  x) {
-    inst_(b, (BInst){STORE, .fn=store_8 , .fn_and_done=store_8_and_done , .x=x.id, .imm=ptr});
+    inst_(b, (BInst){SIDE_EFFECT, .fn=store_8 , .fn_and_done=store_8_and_done , .x=x.id, .imm=ptr});
 }
 void weft_store_16(Builder* b, int ptr, V16 x) {
-    inst_(b, (BInst){STORE, .fn=store_16, .fn_and_done=store_16_and_done, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){SIDE_EFFECT, .fn=store_16, .fn_and_done=store_16_and_done, .x=x.id, .imm=ptr});
 }
 void weft_store_32(Builder* b, int ptr, V32 x) {
-    inst_(b, (BInst){STORE, .fn=store_32, .fn_and_done=store_32_and_done, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){SIDE_EFFECT, .fn=store_32, .fn_and_done=store_32_and_done, .x=x.id, .imm=ptr});
 }
 void weft_store_64(Builder* b, int ptr, V64 x) {
-    inst_(b, (BInst){STORE, .fn=store_64, .fn_and_done=store_64_and_done, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){SIDE_EFFECT, .fn=store_64, .fn_and_done=store_64_and_done, .x=x.id, .imm=ptr});
 }
 
 static bool is_splat(Builder* b, int id, int64_t imm) {
