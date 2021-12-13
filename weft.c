@@ -527,40 +527,30 @@ V16  weft_sqrt_f16(Builder* b, V16 x) { return inst(b, MATH,16, sqrt_f16, .x=x.i
 V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.id); }
 V64  weft_sqrt_f64(Builder* b, V64 x) { return inst(b, MATH,64, sqrt_f64, .x=x.id); }
 
-#define FLOAT_COMPARISONS(B,S,T,M) \
-    stage(eq_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]==(M)y[i]?-1:0; next(r+N);} \
-    stage(lt_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]< (M)y[i]?-1:0; next(r+N);} \
-    stage(le_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]<=(M)y[i]?-1:0; next(r+N);} \
-    stage(gt_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]> (M)y[i]?-1:0; next(r+N);} \
-    stage(ge_f##B){S *r=R; T *x=v(x),*y=v(y); each r[i]=(M)x[i]>=(M)y[i]?-1:0; next(r+N);}
+#define MORE_FLOAT_STAGES(B,S,T,M) \
+    stage(  eq_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]==(M)y[i] ? -1 : 0; next(r+N);} \
+    stage(  lt_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]< (M)y[i] ? -1 : 0; next(r+N);} \
+    stage(  le_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]<=(M)y[i] ? -1 : 0; next(r+N);} \
+    stage(  gt_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]> (M)y[i] ? -1 : 0; next(r+N);} \
+    stage(  ge_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]>=(M)y[i] ? -1 : 0; next(r+N);} \
+    stage(cast_f##B){S *r=R; T *x=v(x);          each r[i]=(S)x[i]                  ; next(r+N);} \
+    stage(cast_s##B){T *r=R; S *x=v(x);          each r[i]=(T)x[i]                  ; next(r+N);} \
+                                                                                                  \
+    V##B weft_eq_f##B(Builder* b, V##B x, V##B y){sort_commutative(&x.id, &y.id);                 \
+                                                  return inst(b,MATH,B,eq_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_lt_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,lt_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_le_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,le_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_gt_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,gt_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_ge_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,ge_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_cast_f##B(Builder* b, V##B x) { return inst(b,MATH,B,cast_f##B, .x=x.id); }         \
+    V##B weft_cast_s##B(Builder* b, V##B x) { return inst(b,MATH,B,cast_s##B, .x=x.id); }
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wfloat-equal"
-    FLOAT_COMPARISONS(16,int16_t,__fp16, float)
-    FLOAT_COMPARISONS(32,int32_t, float, float)
-    FLOAT_COMPARISONS(64,int64_t,double,double)
+    MORE_FLOAT_STAGES(16,int16_t,__fp16, float)
+    MORE_FLOAT_STAGES(32,int32_t, float, float)
+    MORE_FLOAT_STAGES(64,int64_t,double,double)
 #pragma GCC diagnostic pop
-
-V16 weft_eq_f16(Builder* b, V16 x, V16 y) { sort_commutative(&x.id,&y.id);
-                                            return inst(b, MATH,16,eq_f16, .x=x.id, .y=y.id); }
-V16 weft_lt_f16(Builder* b, V16 x, V16 y) { return inst(b, MATH,16,lt_f16, .x=x.id, .y=y.id); }
-V16 weft_le_f16(Builder* b, V16 x, V16 y) { return inst(b, MATH,16,le_f16, .x=x.id, .y=y.id); }
-V16 weft_gt_f16(Builder* b, V16 x, V16 y) { return inst(b, MATH,16,gt_f16, .x=x.id, .y=y.id); }
-V16 weft_ge_f16(Builder* b, V16 x, V16 y) { return inst(b, MATH,16,ge_f16, .x=x.id, .y=y.id); }
-
-V32 weft_eq_f32(Builder* b, V32 x, V32 y) { sort_commutative(&x.id,&y.id);
-                                            return inst(b, MATH,32,eq_f32, .x=x.id, .y=y.id); }
-V32 weft_lt_f32(Builder* b, V32 x, V32 y) { return inst(b, MATH,32,lt_f32, .x=x.id, .y=y.id); }
-V32 weft_le_f32(Builder* b, V32 x, V32 y) { return inst(b, MATH,32,le_f32, .x=x.id, .y=y.id); }
-V32 weft_gt_f32(Builder* b, V32 x, V32 y) { return inst(b, MATH,32,gt_f32, .x=x.id, .y=y.id); }
-V32 weft_ge_f32(Builder* b, V32 x, V32 y) { return inst(b, MATH,32,ge_f32, .x=x.id, .y=y.id); }
-
-V64 weft_eq_f64(Builder* b, V64 x, V64 y) { sort_commutative(&x.id,&y.id);
-                                            return inst(b, MATH,64,eq_f64, .x=x.id, .y=y.id); }
-V64 weft_lt_f64(Builder* b, V64 x, V64 y) { return inst(b, MATH,64,lt_f64, .x=x.id, .y=y.id); }
-V64 weft_le_f64(Builder* b, V64 x, V64 y) { return inst(b, MATH,64,le_f64, .x=x.id, .y=y.id); }
-V64 weft_gt_f64(Builder* b, V64 x, V64 y) { return inst(b, MATH,64,gt_f64, .x=x.id, .y=y.id); }
-V64 weft_ge_f64(Builder* b, V64 x, V64 y) { return inst(b, MATH,64,ge_f64, .x=x.id, .y=y.id); }
 
 #define INT_STAGES(B,S,U) \
     stage(not_  ##B) {S *r=R, *x=v(x);          each r[i] =     ~x[i]         ; next(r+N);}  \
@@ -701,19 +691,3 @@ V64 weft_widen_s32(Builder* b, V32 x) { return inst(b, MATH,64,widen_s32, .x=x.i
 V16 weft_widen_u8 (Builder* b, V8  x) { return inst(b, MATH,16,widen_u8 , .x=x.id); }
 V32 weft_widen_u16(Builder* b, V16 x) { return inst(b, MATH,32,widen_u16, .x=x.id); }
 V64 weft_widen_u32(Builder* b, V32 x) { return inst(b, MATH,64,widen_u32, .x=x.id); }
-
-stage(cast_f16) { int16_t *r=R; __fp16 *x=v(x); each r[i] = (int16_t)x[i]; next(r+N); }
-stage(cast_f32) { int32_t *r=R; float  *x=v(x); each r[i] = (int32_t)x[i]; next(r+N); }
-stage(cast_f64) { int64_t *r=R; double *x=v(x); each r[i] = (int64_t)x[i]; next(r+N); }
-
-stage(cast_s16) { __fp16 *r=R; int16_t *x=v(x); each r[i] = (__fp16)x[i]; next(r+N); }
-stage(cast_s32) { float  *r=R; int32_t *x=v(x); each r[i] =  (float)x[i]; next(r+N); }
-stage(cast_s64) { double *r=R; int64_t *x=v(x); each r[i] = (double)x[i]; next(r+N); }
-
-V16 weft_cast_f16(Builder* b, V16 x) { return inst(b, MATH,16,cast_f16, .x=x.id); }
-V32 weft_cast_f32(Builder* b, V32 x) { return inst(b, MATH,32,cast_f32, .x=x.id); }
-V64 weft_cast_f64(Builder* b, V64 x) { return inst(b, MATH,64,cast_f64, .x=x.id); }
-
-V16 weft_cast_s16(Builder* b, V16 x) { return inst(b, MATH,16,cast_s16, .x=x.id); }
-V32 weft_cast_s32(Builder* b, V32 x) { return inst(b, MATH,32,cast_s32, .x=x.id); }
-V64 weft_cast_s64(Builder* b, V64 x) { return inst(b, MATH,64,cast_s64, .x=x.id); }
