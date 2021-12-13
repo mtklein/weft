@@ -401,111 +401,58 @@ static void sort_commutative(int* x, int* y) {
     *y = hi;
 }
 
-stage(add_f16) {
-    __fp16 *r=R, *x=v(x), *y=v(y);
-    each r[i] = (__fp16)((float)x[i] + (float)y[i]);
-    next(r+N);
-}
-stage(sub_f16) {
-    __fp16 *r=R, *x=v(x), *y=v(y);
-    each r[i] = (__fp16)((float)x[i] - (float)y[i]);
-    next(r+N);
-}
-stage(mul_f16) {
-    __fp16 *r=R, *x=v(x), *y=v(y);
-    each r[i] = (__fp16)((float)x[i] * (float)y[i]);
-    next(r+N);
-}
-stage(div_f16) {
-    __fp16 *r=R, *x=v(x), *y=v(y);
-    each r[i] = (__fp16)((float)x[i] / (float)y[i]);
-    next(r+N);
-}
+#define FLOAT_STAGES(B,S,T,M,N0,P1) \
+    stage(  eq_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]==(M)y[i] ? -1 : 0; next(r+N);} \
+    stage(  lt_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]< (M)y[i] ? -1 : 0; next(r+N);} \
+    stage(  le_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]<=(M)y[i] ? -1 : 0; next(r+N);} \
+    stage(  gt_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]> (M)y[i] ? -1 : 0; next(r+N);} \
+    stage(  ge_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]>=(M)y[i] ? -1 : 0; next(r+N);} \
+    stage(cast_f##B){S *r=R; T *x=v(x);          each r[i]=(S)x[i]                  ; next(r+N);} \
+    stage(cast_s##B){T *r=R; S *x=v(x);          each r[i]=(T)x[i]                  ; next(r+N);} \
+    stage( add_f##B){T *r=R,   *x=v(x), *y=v(y); each r[i]=(T)((M)x[i]+(M)y[i])     ; next(r+N);} \
+    stage( sub_f##B){T *r=R,   *x=v(x), *y=v(y); each r[i]=(T)((M)x[i]-(M)y[i])     ; next(r+N);} \
+    stage( mul_f##B){T *r=R,   *x=v(x), *y=v(y); each r[i]=(T)((M)x[i]*(M)y[i])     ; next(r+N);} \
+    stage( div_f##B){T *r=R,   *x=v(x), *y=v(y); each r[i]=(T)((M)x[i]/(M)y[i])     ; next(r+N);} \
+                                                                                                  \
+    V##B weft_eq_f##B(Builder* b, V##B x, V##B y){sort_commutative(&x.id, &y.id);                 \
+                                                  return inst(b,MATH,B,eq_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_lt_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,lt_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_le_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,le_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_gt_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,gt_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_ge_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,ge_f##B,.x=x.id,.y=y.id);} \
+    V##B weft_cast_f##B(Builder* b, V##B x) { return inst(b,MATH,B,cast_f##B, .x=x.id); }         \
+    V##B weft_cast_s##B(Builder* b, V##B x) { return inst(b,MATH,B,cast_s##B, .x=x.id); }         \
+    V##B weft_add_f ##B(Builder* b, V##B x, V##B y) {                                             \
+        sort_commutative(&x.id, &y.id);                                                           \
+        if (is_splat(b,y.id,  0)) { return x; }                                                   \
+        if (is_splat(b,y.id, N0)) { return x; }                                                   \
+        if (is_splat(b,x.id,  0)) { return y; }                                                   \
+        if (is_splat(b,x.id, N0)) { return y; }                                                   \
+        return inst(b, MATH,B, add_f##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                             \
+    V##B weft_sub_f ##B(Builder* b, V##B x, V##B y) {                                             \
+        if (is_splat(b,y.id,  0)) { return x; }                                                   \
+        if (is_splat(b,y.id, N0)) { return x; }                                                   \
+        return inst(b, MATH,B, sub_f##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                             \
+    V##B weft_mul_f ##B(Builder* b, V##B x, V##B y) {                                             \
+        sort_commutative(&x.id, &y.id);                                                           \
+        /* NB: x*0 isn't 0 when x is NaN. */                                                      \
+        if (is_splat(b,y.id, P1)) { return x; }                                                   \
+        if (is_splat(b,x.id, P1)) { return y; }                                                   \
+        return inst(b, MATH,B, mul_f##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                             \
+    V##B weft_div_f ##B(Builder* b, V##B x, V##B y) {                                             \
+        if (is_splat(b,y.id, P1)) { return x; }                                                   \
+        return inst(b, MATH,B, div_f##B, .x=x.id, .y=y.id);                                       \
+    }
 
-V16 weft_add_f16(Builder* b, V16 x, V16 y) {
-    sort_commutative(&x.id, &y.id);
-    if (is_splat(b,y.id,      0)) { return x; }
-    if (is_splat(b,y.id, f16_n0)) { return x; }
-    if (is_splat(b,x.id,      0)) { return y; }
-    if (is_splat(b,x.id, f16_n0)) { return y; }
-    return inst(b, MATH,16, add_f16, .x=x.id, .y=y.id);
-}
-V16 weft_sub_f16(Builder* b, V16 x, V16 y) {
-    if (is_splat(b,y.id,      0)) { return x; }
-    if (is_splat(b,y.id, f16_n0)) { return x; }
-    return inst(b, MATH,16, sub_f16, .x=x.id, .y=y.id);
-}
-V16 weft_mul_f16(Builder* b, V16 x, V16 y) {
-    sort_commutative(&x.id, &y.id);
-    // Note: x*0 isn't 0 when x=NaN.
-    if (is_splat(b,y.id, f16_p1)) { return x; }
-    if (is_splat(b,x.id, f16_p1)) { return y; }
-    return inst(b, MATH,16, mul_f16, .x=x.id, .y=y.id);
-}
-V16 weft_div_f16(Builder* b, V16 x, V16 y) {
-    if (is_splat(b,y.id, f16_p1)) { return x; }
-    return inst(b, MATH,16, div_f16, .x=x.id, .y=y.id);
-}
-
-stage(add_f32) { float *r=R, *x=v(x), *y=v(y); each r[i] = x[i]+y[i]; next(r+N); }
-stage(sub_f32) { float *r=R, *x=v(x), *y=v(y); each r[i] = x[i]-y[i]; next(r+N); }
-stage(mul_f32) { float *r=R, *x=v(x), *y=v(y); each r[i] = x[i]*y[i]; next(r+N); }
-stage(div_f32) { float *r=R, *x=v(x), *y=v(y); each r[i] = x[i]/y[i]; next(r+N); }
-
-V32 weft_add_f32(Builder* b, V32 x, V32 y) {
-    sort_commutative(&x.id, &y.id);
-    if (is_splat(b,y.id,      0)) { return x; }
-    if (is_splat(b,y.id, f32_n0)) { return x; }
-    if (is_splat(b,x.id,      0)) { return y; }
-    if (is_splat(b,x.id, f32_n0)) { return y; }
-    return inst(b, MATH,32, add_f32, .x=x.id, .y=y.id);
-}
-V32 weft_sub_f32(Builder* b, V32 x, V32 y) {
-    if (is_splat(b,y.id,      0)) { return x; }
-    if (is_splat(b,y.id, f32_n0)) { return x; }
-    return inst(b, MATH,32, sub_f32, .x=x.id, .y=y.id);
-}
-V32 weft_mul_f32(Builder* b, V32 x, V32 y) {
-    sort_commutative(&x.id, &y.id);
-    // Note: x*0 isn't 0 when x=NaN.
-    if (is_splat(b,y.id, f32_p1)) { return x; }
-    if (is_splat(b,x.id, f32_p1)) { return y; }
-    return inst(b, MATH,32, mul_f32, .x=x.id, .y=y.id);
-}
-V32 weft_div_f32(Builder* b, V32 x, V32 y) {
-    if (is_splat(b,y.id, f32_p1)) { return x; }
-    return inst(b, MATH,32, div_f32, .x=x.id, .y=y.id);
-}
-
-stage(add_f64) { double *r=R, *x=v(x), *y=v(y); each r[i] = x[i]+y[i]; next(r+N); }
-stage(sub_f64) { double *r=R, *x=v(x), *y=v(y); each r[i] = x[i]-y[i]; next(r+N); }
-stage(mul_f64) { double *r=R, *x=v(x), *y=v(y); each r[i] = x[i]*y[i]; next(r+N); }
-stage(div_f64) { double *r=R, *x=v(x), *y=v(y); each r[i] = x[i]/y[i]; next(r+N); }
-
-V64 weft_add_f64(Builder* b, V64 x, V64 y) {
-    sort_commutative(&x.id, &y.id);
-    if (is_splat(b,y.id,      0)) { return x; }
-    if (is_splat(b,y.id, f64_n0)) { return x; }
-    if (is_splat(b,x.id,      0)) { return y; }
-    if (is_splat(b,x.id, f64_n0)) { return y; }
-    return inst(b, MATH,64, add_f64, .x=x.id, .y=y.id);
-}
-V64 weft_sub_f64(Builder* b, V64 x, V64 y) {
-    if (is_splat(b,y.id,      0)) { return x; }
-    if (is_splat(b,y.id, f64_n0)) { return x; }
-    return inst(b, MATH,64, sub_f64, .x=x.id, .y=y.id);
-}
-V64 weft_mul_f64(Builder* b, V64 x, V64 y) {
-    sort_commutative(&x.id, &y.id);
-    // Note: x*0 isn't 0 when x=NaN.
-    if (is_splat(b,y.id, f64_p1)) { return x; }
-    if (is_splat(b,x.id, f64_p1)) { return y; }
-    return inst(b, MATH,64, mul_f64, .x=x.id, .y=y.id);
-}
-V64 weft_div_f64(Builder* b, V64 x, V64 y) {
-    if (is_splat(b,y.id, f64_p1)) { return x; }
-    return inst(b, MATH,64, div_f64, .x=x.id, .y=y.id);
-}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wfloat-equal"
+    FLOAT_STAGES(16,int16_t,__fp16, float, f16_n0, f16_p1)
+    FLOAT_STAGES(32,int32_t, float, float, f32_n0, f32_p1)
+    FLOAT_STAGES(64,int64_t,double,double, f64_n0, f64_p1)
+#pragma GCC diagnostic pop
 
 stage( ceil_f16) { __fp16 *r=R, *x=v(x); each r[i] = (__fp16) ceilf((float)x[i]); next(r+N); }
 stage( ceil_f32) { float  *r=R, *x=v(x); each r[i] =          ceilf(       x[i]); next(r+N); }
@@ -526,31 +473,6 @@ V64 weft_floor_f64(Builder* b, V64 x) { return inst(b, MATH,64,floor_f64, .x=x.i
 V16  weft_sqrt_f16(Builder* b, V16 x) { return inst(b, MATH,16, sqrt_f16, .x=x.id); }
 V32  weft_sqrt_f32(Builder* b, V32 x) { return inst(b, MATH,32, sqrt_f32, .x=x.id); }
 V64  weft_sqrt_f64(Builder* b, V64 x) { return inst(b, MATH,64, sqrt_f64, .x=x.id); }
-
-#define MORE_FLOAT_STAGES(B,S,T,M) \
-    stage(  eq_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]==(M)y[i] ? -1 : 0; next(r+N);} \
-    stage(  lt_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]< (M)y[i] ? -1 : 0; next(r+N);} \
-    stage(  le_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]<=(M)y[i] ? -1 : 0; next(r+N);} \
-    stage(  gt_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]> (M)y[i] ? -1 : 0; next(r+N);} \
-    stage(  ge_f##B){S *r=R; T *x=v(x), *y=v(y); each r[i]=(M)x[i]>=(M)y[i] ? -1 : 0; next(r+N);} \
-    stage(cast_f##B){S *r=R; T *x=v(x);          each r[i]=(S)x[i]                  ; next(r+N);} \
-    stage(cast_s##B){T *r=R; S *x=v(x);          each r[i]=(T)x[i]                  ; next(r+N);} \
-                                                                                                  \
-    V##B weft_eq_f##B(Builder* b, V##B x, V##B y){sort_commutative(&x.id, &y.id);                 \
-                                                  return inst(b,MATH,B,eq_f##B,.x=x.id,.y=y.id);} \
-    V##B weft_lt_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,lt_f##B,.x=x.id,.y=y.id);} \
-    V##B weft_le_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,le_f##B,.x=x.id,.y=y.id);} \
-    V##B weft_gt_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,gt_f##B,.x=x.id,.y=y.id);} \
-    V##B weft_ge_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,ge_f##B,.x=x.id,.y=y.id);} \
-    V##B weft_cast_f##B(Builder* b, V##B x) { return inst(b,MATH,B,cast_f##B, .x=x.id); }         \
-    V##B weft_cast_s##B(Builder* b, V##B x) { return inst(b,MATH,B,cast_s##B, .x=x.id); }
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wfloat-equal"
-    MORE_FLOAT_STAGES(16,int16_t,__fp16, float)
-    MORE_FLOAT_STAGES(32,int32_t, float, float)
-    MORE_FLOAT_STAGES(64,int64_t,double,double)
-#pragma GCC diagnostic pop
 
 #define INT_STAGES(B,S,U) \
     stage(not_  ##B) {S *r=R, *x=v(x);          each r[i] =     ~x[i]         ; next(r+N);}  \
