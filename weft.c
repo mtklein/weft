@@ -381,6 +381,16 @@ void weft_store_64(Builder* b, int ptr, V64 x) {
     inst_(b, (BInst){SIDE_EFFECT, .fn=store_64, .fn_and_done=store_64_and_done, .x=x.id, .imm=ptr});
 }
 
+stage(assert_8)  { int8_t  *x=v(x); each assert(x[i]); next(R); }
+stage(assert_16) { int16_t *x=v(x); each assert(x[i]); next(R); }
+stage(assert_32) { int32_t *x=v(x); each assert(x[i]); next(R); }
+stage(assert_64) { int64_t *x=v(x); each assert(x[i]); next(R); }
+
+void weft_assert_8 (Builder* b, V8  x) { inst_(b, (BInst){SIDE_EFFECT, .fn=assert_8 , .x=x.id}); }
+void weft_assert_16(Builder* b, V16 x) { inst_(b, (BInst){SIDE_EFFECT, .fn=assert_16, .x=x.id}); }
+void weft_assert_32(Builder* b, V32 x) { inst_(b, (BInst){SIDE_EFFECT, .fn=assert_32, .x=x.id}); }
+void weft_assert_64(Builder* b, V64 x) { inst_(b, (BInst){SIDE_EFFECT, .fn=assert_64, .x=x.id}); }
+
 static bool is_splat(Builder* b, int id, int64_t imm) {
     return b->inst[id-1].kind == SPLAT
         && b->inst[id-1].imm  == imm;

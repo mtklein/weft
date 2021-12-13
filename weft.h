@@ -55,6 +55,12 @@ void weft_store_16(weft_Builder*, int ptr, weft_V16);
 void weft_store_32(weft_Builder*, int ptr, weft_V32);
 void weft_store_64(weft_Builder*, int ptr, weft_V64);
 
+// assert() all a value's lanes are true.
+void weft_assert_8 (weft_Builder*, weft_V8);
+void weft_assert_16(weft_Builder*, weft_V16);
+void weft_assert_32(weft_Builder*, weft_V32);
+void weft_assert_64(weft_Builder*, weft_V64);
+
 // Arithmetic.
 weft_V8 weft_add_i8(weft_Builder*, weft_V8, weft_V8);
 weft_V8 weft_sub_i8(weft_Builder*, weft_V8, weft_V8);
