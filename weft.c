@@ -499,6 +499,7 @@ static void sort_commutative(int* x, int* y) {
         return inst(b, MATH,B,add_i##B, .x=x.id, .y=y.id);                                      \
     }                                                                                           \
     V##B weft_sub_i##B(Builder* b, V##B x, V##B y) {                                            \
+        if (x.id == y.id) { return weft_splat_##B(b,0); }                                       \
         if (is_splat(b,y.id, 0)) { return x; }                                                  \
         return inst(b, MATH,B,sub_i##B, .x=x.id, .y=y.id);                                      \
     }                                                                                           \
