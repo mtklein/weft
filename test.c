@@ -571,6 +571,67 @@ static size_t sel_64(Builder* b) {
     return store_64(b,0, x);
 }
 
+static size_t shiftv_8(Builder* b) {
+    V8 x    = weft_load_8(b,1),
+       zero = weft_splat_8(b,0),
+       one  = weft_splat_8(b,1);
+
+    V8 shift = weft_sel_8(b, weft_and_8(b, weft_lt_s8(b,zero,x)
+                                         , weft_lt_s8(b,x, weft_splat_8(b, 1<<6)))
+                           , one, zero);
+    x = weft_shl_i8(b,x,shift);
+    x = weft_shr_s8(b,x,shift);
+    x = weft_shl_i8(b,x,shift);
+    x = weft_shr_u8(b,x,shift);
+
+    return store_8(b,0,x);
+}
+static size_t shiftv_16(Builder* b) {
+    V16 x    = weft_load_16(b,1),
+       zero = weft_splat_16(b,0),
+       one  = weft_splat_16(b,1);
+
+    V16 shift = weft_sel_16(b, weft_and_16(b, weft_lt_s16(b,zero,x)
+                                            , weft_lt_s16(b,x, weft_splat_16(b, 1<<14)))
+                             , one, zero);
+    x = weft_shl_i16(b,x,shift);
+    x = weft_shr_s16(b,x,shift);
+    x = weft_shl_i16(b,x,shift);
+    x = weft_shr_u16(b,x,shift);
+
+    return store_16(b,0,x);
+}
+static size_t shiftv_32(Builder* b) {
+    V32 x    = weft_load_32(b,1),
+       zero = weft_splat_32(b,0),
+       one  = weft_splat_32(b,1);
+
+    V32 shift = weft_sel_32(b, weft_and_32(b, weft_lt_s32(b,zero,x)
+                                            , weft_lt_s32(b,x, weft_splat_32(b, 1<<30)))
+                             , one, zero);
+    x = weft_shl_i32(b,x,shift);
+    x = weft_shr_s32(b,x,shift);
+    x = weft_shl_i32(b,x,shift);
+    x = weft_shr_u32(b,x,shift);
+
+    return store_32(b,0,x);
+}
+static size_t shiftv_64(Builder* b) {
+    V64 x    = weft_load_64(b,1),
+       zero = weft_splat_64(b,0),
+       one  = weft_splat_64(b,1);
+
+    V64 shift = weft_sel_64(b, weft_and_64(b, weft_lt_s64(b,zero,x)
+                                            , weft_lt_s64(b,x, weft_splat_64(b, 1ll<<62)))
+                             , one, zero);
+    x = weft_shl_i64(b,x,shift);
+    x = weft_shr_s64(b,x,shift);
+    x = weft_shl_i64(b,x,shift);
+    x = weft_shr_u64(b,x,shift);
+
+    return store_64(b,0,x);
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -631,6 +692,11 @@ int main(void) {
     test(sel_16);
     test(sel_32);
     test(sel_64);
+
+    test(shiftv_8);
+    test(shiftv_16);
+    test(shiftv_32);
+    test(shiftv_64);
 
     return 0;
 }
