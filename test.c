@@ -136,15 +136,15 @@ static void test(size_t (*fn)(Builder*)) {
     free(p);
 
     if (0 != memcmp(dst,src, (bits/8)*len(h))) {
-        fprintf(stderr, "want:");
+        dprintf(2, "want:");
         for (size_t i = 0; i < (bits/8)*len(h); i++) {
-            fprintf(stderr, " %02x", ((const uint8_t*)src)[i]);
+            dprintf(2, " %02x", ((const uint8_t*)src)[i]);
         }
-        fprintf(stderr, "\ngot: ");
+        dprintf(2, "\ngot: ");
         for (size_t i = 0; i < (bits/8)*len(h); i++) {
-            fprintf(stderr, " %02x", ((const uint8_t*)dst)[i]);
+            dprintf(2, " %02x", ((const uint8_t*)dst)[i]);
         }
-        fprintf(stderr, "\n");
+        dprintf(2, "\n");
     }
     assert(0 == memcmp(dst,src,(bits/8)*len(h)));
 }

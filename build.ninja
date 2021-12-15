@@ -22,15 +22,16 @@ rule coverage_summary
 rule coverage_details
     command = $llvm/bin/llvm-cov show --use-color --instr-profile $in > $out
 
-clang = $llvm/bin/clang -fcolor-diagnostics -Weverything -Xclang -nostdsysteminc
+clang        = $llvm/bin/clang
+clang_cflags = -fcolor-diagnostics -Weverything -Xclang -nostdsysteminc
 
-opt    = $clang -O2
-lto    = $clang -O2 -flto
-x86_64 = $clang -O2 -arch x86_64 -momit-leaf-frame-pointer
-misc   = $clang -fsanitize=address,integer,undefined -fno-sanitize-recover=all $
-                -fprofile-instr-generate -fcoverage-mapping
-wasmZ  = zig cc -O2 -target wasm32-wasi
-wasmE  = emcc   -O2 -msimd128
+opt    = $clang $clang_cflags -O2
+lto    = $clang $clang_cflags -O2 -flto
+x86_64 = $clang $clang_cflags -O2 -arch x86_64 -momit-leaf-frame-pointer
+misc   = $clang $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all $
+                              -fprofile-instr-generate -fcoverage-mapping
+wasmZ  = zig cc $clang_cflags -O2 -target wasm32-wasi
+wasmE  = emcc   $clang_cflags -O2 -msimd128
 gcc    = /opt/homebrew/bin/gcc-11 -O3 -Wall -Wextra -fdiagnostics-color
 
 build out/opt/weft.o: compile weft.c
@@ -77,7 +78,7 @@ build weft.c.details:         coverage_details out/misc/test.profdata out/misc/t
 build out/wasmZ/weft.o: compile weft.c
     cc = $wasmZ
 build out/wasmZ/test.o: compile test.c
-    cc = $wasmZ
+    cc = $wasmZ -D_POSIX_SOURCE
 build out/wasmZ/test: link out/wasmZ/weft.o out/wasmZ/test.o
     cc = $wasmZ
 build out/wasmZ/test.ok: run out/wasmZ/test
@@ -87,7 +88,7 @@ build out/wasmZ/test.ok: run out/wasmZ/test
 build out/wasmE/weft.o: compile weft.c
     cc = $wasmE
 build out/wasmE/test.o: compile test.c
-    cc = $wasmE
+    cc = $wasmE -D_POSIX_SOURCE
 build out/wasmE/test.wasm: link out/wasmE/weft.o out/wasmE/test.o
     cc = $wasmE -s STANDALONE_WASM
 build out/wasmE/test.ok: run out/wasmE/test.wasm
