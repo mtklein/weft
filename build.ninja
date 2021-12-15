@@ -96,7 +96,7 @@ build out/wasm2/test.o: compile test.c
 build out/wasm2/test.wasm: link out/wasm2/weft.o out/wasm2/test.o
     cc = $wasm2 -s STANDALONE_WASM
 build out/wasm2/test.ok: run out/wasm2/test.wasm
-    runtime = wasmtime --enable-simd
+    runtime = wasmtime --wasm-features=simd
 
 build out/gcc/weft.o: compile weft.c
     cc = $gcc
