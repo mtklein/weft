@@ -31,8 +31,8 @@ xsan   = clang  $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize
 lsan   = $brew  $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize-recover=all
 wasm   = zig cc $clang_cflags -O2 -target wasm32-wasi
 wasm2  = emcc   $clang_cflags -O2 -msimd128
-gcc    = /opt/homebrew/bin/gcc-11 -fdiagnostics-color -O3
 cov    = $brew  $clang_cflags -fprofile-instr-generate -fcoverage-mapping
+gcc    = /opt/homebrew/bin/gcc-11 -Wall -Wextra -fdiagnostics-color -O3
 
 build out/opt/weft.o: compile weft.c
     cc = $opt
@@ -98,14 +98,6 @@ build out/wasm2/test.wasm: link out/wasm2/weft.o out/wasm2/test.o
 build out/wasm2/test.ok: run out/wasm2/test.wasm
     runtime = wasmtime --wasm-features=simd
 
-build out/gcc/weft.o: compile weft.c
-    cc = $gcc
-build out/gcc/test.o: compile test.c
-    cc = $gcc
-build out/gcc/test: link out/gcc/weft.o out/gcc/test.o
-    cc = $gcc
-build out/gcc/test.ok: run out/gcc/test
-
 build out/cov/weft.o: compile weft.c
     cc = $cov
 build out/cov/test.o: compile test.c
@@ -117,3 +109,11 @@ build out/cov/test.ok | out/cov/test.profraw: run out/cov/test
 build out/cov/test.profdata:  index_coverage out/cov/test.profraw
 build weft.c.summary:       coverage_summary out/cov/test.profdata out/cov/test weft.c
 build weft.c.details:       coverage_details out/cov/test.profdata out/cov/test weft.c
+
+build out/gcc/weft.o: compile weft.c
+    cc = $gcc
+build out/gcc/test.o: compile test.c
+    cc = $gcc
+build out/gcc/test: link out/gcc/weft.o out/gcc/test.o
+    cc = $gcc
+build out/gcc/test.ok: run out/gcc/test
