@@ -408,8 +408,8 @@ static void sort_commutative(int* x, int* y) {
 }
 
 #define FLOAT_STAGES(B,S,F,M,N0,P1) \
-    stage( cast_f##B){S *r=R; F *x=v(x);          each r[i]=(S)x[i]                 ; next(r+N);} \
-    stage( cast_s##B){F *r=R; S *x=v(x);          each r[i]=(F)x[i]                 ; next(r+N);} \
+    stage( cast_f##B){S *r=R; F *x=v(x);          each r[i]=(S)   x[i]              ; next(r+N);} \
+    stage( cast_s##B){F *r=R; S *x=v(x);          each r[i]=(F)(M)x[i]              ; next(r+N);} \
     stage( ceil_f##B){F *r=R,   *x=v(x);          each r[i]=(F)ceil ((M)x[i])       ; next(r+N);} \
     stage(floor_f##B){F *r=R,   *x=v(x);          each r[i]=(F)floor((M)x[i])       ; next(r+N);} \
     stage( sqrt_f##B){F *r=R,   *x=v(x);          each r[i]=(F)sqrt ((M)x[i])       ; next(r+N);} \

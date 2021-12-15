@@ -221,6 +221,16 @@ static size_t uniform64(Builder* b) {
     return store_64(b,0, weft_mul_i64(b,x,one));
 }
 
+static size_t roundtrip_f16(Builder* b) {
+    return store_16(b,0, weft_cast_s16(b, weft_cast_f16(b, weft_load_16(b,1))));
+}
+static size_t roundtrip_f32(Builder* b) {
+    return store_32(b,0, weft_cast_s32(b, weft_cast_f32(b, weft_load_32(b,1))));
+}
+static size_t roundtrip_f64(Builder* b) {
+    return store_64(b,0, weft_cast_s64(b, weft_cast_f64(b, weft_load_64(b,1))));
+}
+
 static size_t arithmetic_f16(Builder* b) {
     V16 one = weft_uniform_16(b, 3);
 
@@ -676,6 +686,10 @@ int main(void) {
     test(uniform16);
     test(uniform32);
     test(uniform64);
+
+    test(roundtrip_f16);
+    test(roundtrip_f32);
+    test(roundtrip_f64);
 
     test(arithmetic_f16);
     test(arithmetic_f32);
