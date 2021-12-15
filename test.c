@@ -273,6 +273,10 @@ static size_t special_cases_i8(Builder* b) {
     assert(zero.id == weft_sub_i8(b,x,x   ).id);
     assert(   x.id == weft_sub_i8(b,x,zero).id);
 
+    assert(   x.id == weft_shl_i8(b,x,zero).id);
+    assert(   x.id == weft_shr_s8(b,x,zero).id);
+    assert(   x.id == weft_shr_u8(b,x,zero).id);
+
     V8 y = weft_load_8(b,1);
 
     assert(   y.id == weft_add_i8(b,zero,y).id);
@@ -296,6 +300,10 @@ static size_t special_cases_i16(Builder* b) {
     assert(zero.id == weft_mul_i16(b,x,zero).id);
     assert(zero.id == weft_sub_i16(b,x,x   ).id);
     assert(   x.id == weft_sub_i16(b,x,zero).id);
+
+    assert(   x.id == weft_shl_i16(b,x,zero).id);
+    assert(   x.id == weft_shr_s16(b,x,zero).id);
+    assert(   x.id == weft_shr_u16(b,x,zero).id);
 
     V16 y = weft_load_16(b,1);
 
@@ -321,6 +329,10 @@ static size_t special_cases_i32(Builder* b) {
     assert(zero.id == weft_sub_i32(b,x,x   ).id);
     assert(   x.id == weft_sub_i32(b,x,zero).id);
 
+    assert(   x.id == weft_shl_i32(b,x,zero).id);
+    assert(   x.id == weft_shr_s32(b,x,zero).id);
+    assert(   x.id == weft_shr_u32(b,x,zero).id);
+
     V32 y = weft_load_32(b,1);
 
     assert(   y.id == weft_add_i32(b,zero,y).id);
@@ -344,6 +356,10 @@ static size_t special_cases_i64(Builder* b) {
     assert(zero.id == weft_mul_i64(b,x,zero).id);
     assert(zero.id == weft_sub_i64(b,x,x   ).id);
     assert(   x.id == weft_sub_i64(b,x,zero).id);
+
+    assert(   x.id == weft_shl_i64(b,x,zero).id);
+    assert(   x.id == weft_shr_s64(b,x,zero).id);
+    assert(   x.id == weft_shr_u64(b,x,zero).id);
 
     V64 y = weft_load_64(b,1);
 
