@@ -2,9 +2,9 @@
 #undef NDEBUG
 #include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-int dprintf(int, const char*, ...);
 
 #define len(arr) (int)(sizeof(arr) / sizeof(*arr))
 
@@ -136,15 +136,15 @@ static void test(size_t (*fn)(Builder*)) {
     free(p);
 
     if (0 != memcmp(dst,src, (bits/8)*len(h))) {
-        dprintf(2, "want:");
+        fprintf(stderr, "want:");
         for (size_t i = 0; i < (bits/8)*len(h); i++) {
-            dprintf(2, " %02x", ((const uint8_t*)src)[i]);
+            fprintf(stderr, " %02x", ((const uint8_t*)src)[i]);
         }
-        dprintf(2, "\ngot: ");
+        fprintf(stderr, "\ngot: ");
         for (size_t i = 0; i < (bits/8)*len(h); i++) {
-            dprintf(2, " %02x", ((const uint8_t*)dst)[i]);
+            fprintf(stderr, " %02x", ((const uint8_t*)dst)[i]);
         }
-        dprintf(2, "\n");
+        fprintf(stderr, "\n");
     }
     assert(0 == memcmp(dst,src,(bits/8)*len(h)));
 }
