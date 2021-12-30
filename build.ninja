@@ -32,7 +32,7 @@ misc   = $clang $clang_cflags -fsanitize=address,integer,undefined -fno-sanitize
                               -fprofile-instr-generate -fcoverage-mapping
 wasmZ  = zig cc $clang_cflags -O2 -msimd128 -target wasm32-wasi
 wasmE  = emcc   $clang_cflags -O2 -msimd128
-gcc    = /opt/homebrew/bin/gcc-11 -O3 -Wall -Wextra -fdiagnostics-color
+gcc    = gcc-11 -O3 -Wall -Wextra -fdiagnostics-color
 
 build out/opt/weft.o: compile weft.c
     cc = $opt
