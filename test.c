@@ -1070,6 +1070,13 @@ static size_t ternary_not_loop_dependent(Builder* b) {
     return store_32(b,0, weft_mul_i32(b, x, weft_sel_32(b, weft_lt_s32(b,one,oneF), one, oneF)));
 }
 
+static size_t hash_collision(Builder* b) {
+    V32 x = weft_splat_32(b,0),
+        y = weft_splat_32(b,0x654dd44a);
+    assert(x.id != y.id);
+    return store_32(b,0, weft_load_32(b,1));
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -1172,6 +1179,7 @@ int main(void) {
     test(ternary_not_constant_prop);
     test(ternary_loop_dependent);
     test(ternary_not_loop_dependent);
+    test(hash_collision);
 
     return 0;
 }
