@@ -112,6 +112,25 @@ static void test_memset64() {
     free(p);
 }
 
+static void test_no_tail() {
+    Program* p = NULL;
+    {
+        Builder* b = weft_builder();
+        V64 x = weft_splat_64(b, 0x86753098675309);
+        weft_store_64(b,0,x);
+        p = weft_compile(b);
+    }
+
+    int64_t buf[32] = {0};
+    weft_run(p, len(buf), (void*[]){buf});
+
+    for (int i = 0; i < len(buf); i++) {
+        assert(buf[i] == 0x86753098675309);
+    }
+
+    free(p);
+}
+
 static void test(size_t (*fn)(Builder*)) {
     Builder* b = weft_builder();
     size_t bits = fn(b);
@@ -1027,6 +1046,8 @@ int main(void) {
     test_memset16();
     test_memset32();
     test_memset64();
+
+    test_no_tail();
 
     test(memcpy8);
     test(memcpy16);
