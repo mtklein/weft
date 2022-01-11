@@ -999,6 +999,26 @@ static size_t narrow_widen_f32(Builder* b) {
     return store_32(b,0, weft_narrow_f64(b, weft_widen_f32(b,x)));
 }
 
+static size_t ternary_constant_prop(Builder* b) {
+    V32 x = weft_load_32(b,1);
+
+    // It's weird to pass sel a condition that's neither 0 nor -1,
+    // but it's the only way I can find to constant_prop() a ternary.
+    V32 y = weft_and_32(b,x, weft_sel_32(b, weft_splat_32(b,      0x0000ffff)
+                                          , weft_splat_32(b,      0x0000ffff)
+                                          , weft_splat_32(b, (int)0xffff0000)));
+    assert(x.id == y.id);
+
+    return store_32(b,0, x);
+}
+
+static size_t ternary_loop_dependent(Builder* b) {
+    V32 one  = weft_uniform_32(b,2),
+        oneF = weft_uniform_32(b,4),
+        x    = weft_load_32(b,1);
+    return store_32(b,0, weft_sel_32(b, weft_lt_s32(b,oneF,one), oneF, x));
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -1093,6 +1113,9 @@ int main(void) {
     test(narrow_widen_i32);
     test(narrow_widen_f16);
     test(narrow_widen_f32);
+
+    test(ternary_constant_prop);
+    test(ternary_loop_dependent);
 
     return 0;
 }
