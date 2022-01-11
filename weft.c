@@ -139,10 +139,10 @@ static int constant_prop(Builder* b, const BInst* inst) {
         memcpy(&imm, v + slots*N, sizeof(imm));
 
         switch (inst->slots) {
-            case 1: return weft_splat_8 (b, (int8_t )imm).id;
-            case 2: return weft_splat_16(b, (int16_t)imm).id;
-            case 4: return weft_splat_32(b, (int32_t)imm).id;
-            case 8: return weft_splat_64(b,          imm).id;
+            case  1: return weft_splat_8 (b, (int8_t )imm).id;
+            case  2: return weft_splat_16(b, (int16_t)imm).id;
+            case  4: return weft_splat_32(b, (int32_t)imm).id;
+            default: return weft_splat_64(b,          imm).id;
         }
     }
     return 0;
