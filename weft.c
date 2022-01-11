@@ -5,7 +5,6 @@
 #include <string.h>
 #include <tgmath.h>
 
-// TODO: loadN/storeN
 // TODO: full condition coverage in tests
 // TODO: test GCC with -march=armv8.2-a+fp16
 
@@ -18,8 +17,8 @@ typedef weft_V64 V64;
 
 typedef struct PInst {
     void (*fn)(const struct PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    int x,y,z,w;
-    int : (sizeof(void*) == 4 ? 32 : 0);
+    int x,y,z;
+    int : (sizeof(void*) == 8 ? 32 : 0);
     int64_t imm;
 } PInst;
 
@@ -36,7 +35,8 @@ typedef struct {
     int slots;
     void (*fn  )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
     void (*done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    int x,y,z,w;  // All BInst/Builder value IDs are 1-indexed so 0 can mean unused, N/A, etc.
+    int x,y,z;  // All BInst/Builder value IDs are 1-indexed so 0 can mean unused, N/A, etc.
+    int unused;
     int64_t imm;
 } BInst;
 
@@ -89,7 +89,7 @@ static void insert_cse(Builder* b, int id, int hash) {
 }
 
 // Each stage writes to R ("result") and calls next() with R incremented past its writes.
-// Argument x starts at v(x); ditto for y,z,w.
+// Argument x starts at v(x); ditto for y,z.
 // off tracks weft_run()'s progress [0,n), for offseting varying pointers.
 // When operating on full N-sized chunks, tail is 0; tail is k for the final k<N sized chunk.
 #define stage(name) static void name(const PInst* inst, int off, unsigned tail, \
@@ -111,13 +111,12 @@ static int constant_prop(Builder* b, const BInst* inst) {
     if (inst->kind == MATH
             && (!inst->x || b->inst[inst->x-1].kind == SPLAT)
             && (!inst->y || b->inst[inst->y-1].kind == SPLAT)
-            && (!inst->z || b->inst[inst->z-1].kind == SPLAT)
-            && (!inst->w || b->inst[inst->w-1].kind == SPLAT)) {
-        PInst program[6], *p=program;
+            && (!inst->z || b->inst[inst->z-1].kind == SPLAT)) {
+        PInst program[5], *p=program;
 
         const int* arg = &inst->x;
-        int slot[4]={0}, slots = 0;
-        for (int i = 0; i < 4; i++) {
+        int slot[3]={0}, slots = 0;
+        for (int i = 0; i < 3; i++) {
             if (arg[i]) {
                 *p++    = (PInst){.fn=b->inst[arg[i]-1].fn, .imm=b->inst[arg[i]-1].imm};
                 slot[i] = slots;
@@ -129,13 +128,12 @@ static int constant_prop(Builder* b, const BInst* inst) {
             .x   = slot[0] * N,
             .y   = slot[1] * N,
             .z   = slot[2] * N,
-            .w   = slot[3] * N,
             .imm = inst->imm,
         };
         *p++ = (PInst){.fn=done};
 
         int64_t imm;
-        char v[5*sizeof(imm)*N];
+        char v[4*sizeof(imm)*N];
         assert((slots + inst->slots)*N <= (int)sizeof(v));
         program->fn(program,0,0,v,v,NULL);
         memcpy(&imm, v + slots*N, sizeof(imm));
@@ -229,7 +227,6 @@ Program* weft_compile(Builder* b) {
             if (inst.x) { meta[inst.x-1].live = true; }
             if (inst.y) { meta[inst.y-1].live = true; }
             if (inst.z) { meta[inst.z-1].live = true; }
-            if (inst.w) { meta[inst.w-1].live = true; }
         }
     }
 
@@ -238,8 +235,7 @@ Program* weft_compile(Builder* b) {
         meta[i].loop_dependent = inst.kind >= LOAD
                               || (inst.x && meta[inst.x-1].loop_dependent)
                               || (inst.y && meta[inst.y-1].loop_dependent)
-                              || (inst.z && meta[inst.z-1].loop_dependent)
-                              || (inst.w && meta[inst.w-1].loop_dependent);
+                              || (inst.z && meta[inst.z-1].loop_dependent);
     }
 
     Program* p = malloc(sizeof(*p) + (size_t)live_insts * sizeof(*p->inst));
@@ -259,7 +255,6 @@ Program* weft_compile(Builder* b) {
                     .x   = inst.x ? meta[inst.x-1].slot * N : 0,
                     .y   = inst.y ? meta[inst.y-1].slot * N : 0,
                     .z   = inst.z ? meta[inst.z-1].slot * N : 0,
-                    .w   = inst.w ? meta[inst.w-1].slot * N : 0,
                     .imm = inst.imm,
                 };
                 meta[i].slot = p->slots;
