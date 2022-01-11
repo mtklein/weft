@@ -31,12 +31,11 @@ typedef struct weft_Program {
 } Program;
 
 typedef struct {
-    enum { MATH, SPLAT, UNIFORM, LOAD, SIDE_EFFECT } kind;
-    int slots;
     void (*fn  )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
     void (*done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
     int x,y,z;  // All BInst/Builder value IDs are 1-indexed so 0 can mean unused, N/A, etc.
-    int unused;
+    enum { MATH, SPLAT, UNIFORM, LOAD, SIDE_EFFECT } kind : 16;
+    int slots                                             : 16;
     int64_t imm;
 } BInst;
 
@@ -184,7 +183,7 @@ static int inst_(Builder* b, BInst inst) {
     }
     return id;
 }
-#define inst(b,kind,bits,fn,...) (V##bits){inst_(b, (BInst){kind,bits/8,fn, __VA_ARGS__})}
+#define inst(b,k,bits,fn,...) (V##bits){inst_(b, (BInst){fn, .kind=k, .slots=bits/8, __VA_ARGS__})}
 
 void weft_run(const weft_Program* p, int n, void* const ptr[]) {
     void* V = malloc(N * (size_t)p->slots);
@@ -207,7 +206,7 @@ void weft_run(const weft_Program* p, int n, void* const ptr[]) {
 
 Program* weft_compile(Builder* b) {
     if (b->inst_len == 0 || !b->inst[b->inst_len-1].done) {
-        inst_(b, (BInst){SIDE_EFFECT, .done=done});
+        inst_(b, (BInst){.kind=SIDE_EFFECT, .done=done});
     }
 
     struct {
@@ -364,16 +363,16 @@ stage(store_64_done) {
 }
 
 void weft_store_8 (Builder* b, int ptr, V8  x) {
-    inst_(b, (BInst){SIDE_EFFECT, .fn=store_8 , .done=store_8_done , .x=x.id, .imm=ptr});
+    inst_(b, (BInst){store_8 , .done=store_8_done , .kind=SIDE_EFFECT, .x=x.id, .imm=ptr});
 }
 void weft_store_16(Builder* b, int ptr, V16 x) {
-    inst_(b, (BInst){SIDE_EFFECT, .fn=store_16, .done=store_16_done, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){store_16, .done=store_16_done, .kind=SIDE_EFFECT, .x=x.id, .imm=ptr});
 }
 void weft_store_32(Builder* b, int ptr, V32 x) {
-    inst_(b, (BInst){SIDE_EFFECT, .fn=store_32, .done=store_32_done, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){store_32, .done=store_32_done, .kind=SIDE_EFFECT, .x=x.id, .imm=ptr});
 }
 void weft_store_64(Builder* b, int ptr, V64 x) {
-    inst_(b, (BInst){SIDE_EFFECT, .fn=store_64, .done=store_64_done, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){store_64, .done=store_64_done, .kind=SIDE_EFFECT, .x=x.id, .imm=ptr});
 }
 
 stage(assert_8)  { int8_t  *x=v(x); (void)x; each assert(x[i]); next(R); }
@@ -381,10 +380,10 @@ stage(assert_16) { int16_t *x=v(x); (void)x; each assert(x[i]); next(R); }
 stage(assert_32) { int32_t *x=v(x); (void)x; each assert(x[i]); next(R); }
 stage(assert_64) { int64_t *x=v(x); (void)x; each assert(x[i]); next(R); }
 
-void weft_assert_8 (Builder* b, V8  x) { inst_(b, (BInst){SIDE_EFFECT, .fn=assert_8 , .x=x.id}); }
-void weft_assert_16(Builder* b, V16 x) { inst_(b, (BInst){SIDE_EFFECT, .fn=assert_16, .x=x.id}); }
-void weft_assert_32(Builder* b, V32 x) { inst_(b, (BInst){SIDE_EFFECT, .fn=assert_32, .x=x.id}); }
-void weft_assert_64(Builder* b, V64 x) { inst_(b, (BInst){SIDE_EFFECT, .fn=assert_64, .x=x.id}); }
+void weft_assert_8 (Builder* b, V8  x) { inst_(b, (BInst){assert_8 , .kind=SIDE_EFFECT, .x=x.id}); }
+void weft_assert_16(Builder* b, V16 x) { inst_(b, (BInst){assert_16, .kind=SIDE_EFFECT, .x=x.id}); }
+void weft_assert_32(Builder* b, V32 x) { inst_(b, (BInst){assert_32, .kind=SIDE_EFFECT, .x=x.id}); }
+void weft_assert_64(Builder* b, V64 x) { inst_(b, (BInst){assert_64, .kind=SIDE_EFFECT, .x=x.id}); }
 
 static bool is_splat(Builder* b, int id, int64_t imm) {
     return b->inst[id-1].kind == SPLAT
