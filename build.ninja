@@ -20,7 +20,7 @@ rule coverage_summary
     command = $llvm/bin/llvm-cov report -show-functions -instr-profile $in | tail -n +2 > $out
 
 rule coverage_details
-    command = $llvm/bin/llvm-cov show --use-color --instr-profile $in > $out
+    command = $llvm/bin/llvm-cov show --use-color --show-branches=count --instr-profile $in > $out
 
 clang        = $llvm/bin/clang
 clang_cflags = -fcolor-diagnostics -Weverything -Xclang -nostdsysteminc
