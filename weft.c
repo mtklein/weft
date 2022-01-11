@@ -420,8 +420,6 @@ static void sort_commutative(int* x, int* y) {
     stage(   eq_f##B){S *r=R; F *x=v(x), *y=v(y); each r[i]=(M)x[i] == (M)y[i] ?-1:0; next(r+N);} \
     stage(   lt_f##B){S *r=R; F *x=v(x), *y=v(y); each r[i]=(M)x[i] <  (M)y[i] ?-1:0; next(r+N);} \
     stage(   le_f##B){S *r=R; F *x=v(x), *y=v(y); each r[i]=(M)x[i] <= (M)y[i] ?-1:0; next(r+N);} \
-    stage(   gt_f##B){S *r=R; F *x=v(x), *y=v(y); each r[i]=(M)x[i] >  (M)y[i] ?-1:0; next(r+N);} \
-    stage(   ge_f##B){S *r=R; F *x=v(x), *y=v(y); each r[i]=(M)x[i] >= (M)y[i] ?-1:0; next(r+N);} \
                                                                                                   \
     V##B weft_cast_f##B (Builder* b, V##B x) { return inst(b,MATH,B, cast_f##B, .x=x.id); }       \
     V##B weft_cast_s##B (Builder* b, V##B x) { return inst(b,MATH,B, cast_s##B, .x=x.id); }       \
@@ -456,8 +454,6 @@ static void sort_commutative(int* x, int* y) {
                                                   return inst(b,MATH,B,eq_f##B,.x=x.id,.y=y.id);} \
     V##B weft_lt_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,lt_f##B,.x=x.id,.y=y.id);} \
     V##B weft_le_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,le_f##B,.x=x.id,.y=y.id);} \
-    V##B weft_gt_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,gt_f##B,.x=x.id,.y=y.id);} \
-    V##B weft_ge_f##B(Builder* b, V##B x, V##B y){return inst(b,MATH,B,ge_f##B,.x=x.id,.y=y.id);} \
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wfloat-equal"
@@ -484,6 +480,8 @@ static void sort_commutative(int* x, int* y) {
     stage(eq_i  ##B) {S *r=R, *x=v(x), *y=v(y); each r[i] = x[i]==y[i] ?   -1 : 0; next(r+N);}  \
     stage(lt_s  ##B) {S *r=R, *x=v(x), *y=v(y); each r[i] = x[i]< y[i] ?   -1 : 0; next(r+N);}  \
     stage(lt_u  ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] = x[i]< y[i] ?(U)-1 : 0; next(r+N);}  \
+    stage(le_s  ##B) {S *r=R, *x=v(x), *y=v(y); each r[i] = x[i]<=y[i] ?   -1 : 0; next(r+N);}  \
+    stage(le_u  ##B) {U *r=R, *x=v(x), *y=v(y); each r[i] = x[i]<=y[i] ?(U)-1 : 0; next(r+N);}  \
     stage(sel_  ##B) {                                                                          \
         U *r=R, *x=v(x), *y=v(y), *z=v(z);                                                      \
         each r[i] = ( x[i] & y[i])                                                              \
@@ -576,6 +574,14 @@ static void sort_commutative(int* x, int* y) {
     V##B weft_lt_u##B(Builder* b, V##B x, V##B y) {                                             \
         if (x.id == y.id) { return weft_splat_##B(b, 0); }                                      \
         return inst(b, MATH,B,lt_u##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                           \
+    V##B weft_le_s##B(Builder* b, V##B x, V##B y) {                                             \
+        if (x.id == y.id) { return weft_splat_##B(b,-1); }                                      \
+        return inst(b, MATH,B,le_s##B, .x=x.id, .y=y.id);                                       \
+    }                                                                                           \
+    V##B weft_le_u##B(Builder* b, V##B x, V##B y) {                                             \
+        if (x.id == y.id) { return weft_splat_##B(b,-1); }                                      \
+        return inst(b, MATH,B,le_u##B, .x=x.id, .y=y.id);                                       \
     }                                                                                           \
 
 INT_STAGES( 8, int8_t, uint8_t)

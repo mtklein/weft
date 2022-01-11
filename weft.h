@@ -165,33 +165,35 @@ weft_V64 weft_not_64(weft_Builder*, weft_V64);
 weft_V8 weft_eq_i8(weft_Builder*, weft_V8, weft_V8);
 weft_V8 weft_lt_s8(weft_Builder*, weft_V8, weft_V8);
 weft_V8 weft_lt_u8(weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_le_s8(weft_Builder*, weft_V8, weft_V8);
+weft_V8 weft_le_u8(weft_Builder*, weft_V8, weft_V8);
 
 weft_V16 weft_eq_i16(weft_Builder*, weft_V16, weft_V16);
 weft_V16 weft_lt_s16(weft_Builder*, weft_V16, weft_V16);
 weft_V16 weft_lt_u16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_le_s16(weft_Builder*, weft_V16, weft_V16);
+weft_V16 weft_le_u16(weft_Builder*, weft_V16, weft_V16);
 
 weft_V32 weft_eq_i32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_lt_s32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_lt_u32(weft_Builder*, weft_V32, weft_V32);
+weft_V32 weft_le_s32(weft_Builder*, weft_V32, weft_V32);
+weft_V32 weft_le_u32(weft_Builder*, weft_V32, weft_V32);
 
 weft_V64 weft_eq_i64(weft_Builder*, weft_V64, weft_V64);
 weft_V64 weft_lt_s64(weft_Builder*, weft_V64, weft_V64);
 weft_V64 weft_lt_u64(weft_Builder*, weft_V64, weft_V64);
+weft_V64 weft_le_s64(weft_Builder*, weft_V64, weft_V64);
+weft_V64 weft_le_u64(weft_Builder*, weft_V64, weft_V64);
 
 weft_V16 weft_eq_f16(weft_Builder*, weft_V16, weft_V16);
 weft_V16 weft_lt_f16(weft_Builder*, weft_V16, weft_V16);
 weft_V16 weft_le_f16(weft_Builder*, weft_V16, weft_V16);
-weft_V16 weft_gt_f16(weft_Builder*, weft_V16, weft_V16);
-weft_V16 weft_ge_f16(weft_Builder*, weft_V16, weft_V16);
 
 weft_V32 weft_eq_f32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_lt_f32(weft_Builder*, weft_V32, weft_V32);
 weft_V32 weft_le_f32(weft_Builder*, weft_V32, weft_V32);
-weft_V32 weft_gt_f32(weft_Builder*, weft_V32, weft_V32);
-weft_V32 weft_ge_f32(weft_Builder*, weft_V32, weft_V32);
 
 weft_V64 weft_eq_f64(weft_Builder*, weft_V64, weft_V64);
 weft_V64 weft_lt_f64(weft_Builder*, weft_V64, weft_V64);
 weft_V64 weft_le_f64(weft_Builder*, weft_V64, weft_V64);
-weft_V64 weft_gt_f64(weft_Builder*, weft_V64, weft_V64);
-weft_V64 weft_ge_f64(weft_Builder*, weft_V64, weft_V64);
