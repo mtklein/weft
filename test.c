@@ -771,6 +771,27 @@ static size_t or_64(Builder* b) {
     return store_64(b,0, weft_or_64(b,x,y));
 }
 
+static size_t bic_8(Builder* b) {
+    V8 x = weft_load_8(b,1),
+       y = weft_load_8(b,1);
+    return store_8(b,0, weft_sel_8(b, weft_lt_s8(b,x,y), weft_splat_8(b,0), x));
+}
+static size_t bic_16(Builder* b) {
+    V16 x = weft_load_16(b,1),
+        y = weft_load_16(b,1);
+    return store_16(b,0, weft_sel_16(b, weft_lt_s16(b,x,y), weft_splat_16(b,0), x));
+}
+static size_t bic_32(Builder* b) {
+    V32 x = weft_load_32(b,1),
+        y = weft_load_32(b,1);
+    return store_32(b,0, weft_sel_32(b, weft_lt_s32(b,x,y), weft_splat_32(b,0), x));
+}
+static size_t bic_64(Builder* b) {
+    V64 x = weft_load_64(b,1),
+        y = weft_load_64(b,1);
+    return store_64(b,0, weft_sel_64(b, weft_lt_s64(b,x,y), weft_splat_64(b,0), x));
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -845,6 +866,11 @@ int main(void) {
     test(or_16);
     test(or_32);
     test(or_64);
+
+    test(bic_8);
+    test(bic_16);
+    test(bic_32);
+    test(bic_64);
 
     return 0;
 }
