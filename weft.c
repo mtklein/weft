@@ -82,7 +82,7 @@ static void insert_cse(Builder* b, int id, int hash) {
             b->cse[i].id   = id;
             b->cse[i].hash = hash;
             b->cse_len++;
-            break;
+            n = 0;  // i.e. break;
         }
         i = (i+1) & (b->cse_cap-1);
     }
