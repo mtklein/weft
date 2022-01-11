@@ -1041,6 +1041,22 @@ static size_t ternary_constant_prop(Builder* b) {
 
     return store_32(b,0, x);
 }
+static size_t ternary_not_constant_prop(Builder* b) {
+    V32 x = weft_load_32(b,1);
+
+    V32 c = weft_mul_i32(b, weft_splat_32(b, (int)0xffff0000)
+                          , weft_uniform_32(b, 2));
+
+    // It's weird to pass sel a condition that's neither 0 nor -1,
+    // but it's the only way I can find to constant_prop() a ternary.
+    V32 y = weft_and_32(b,x, weft_sel_32(b, weft_splat_32(b, 0x0000ffff)
+                                          , weft_splat_32(b, 0x0000ffff)
+                                          , c));
+    assert(x.id != y.id);
+
+    return store_32(b,0, y);
+}
+
 static size_t ternary_loop_dependent(Builder* b) {
     V32 one  = weft_uniform_32(b,2),
         oneF = weft_uniform_32(b,4),
@@ -1153,6 +1169,7 @@ int main(void) {
     test(narrow_widen_f32);
 
     test(ternary_constant_prop);
+    test(ternary_not_constant_prop);
     test(ternary_loop_dependent);
     test(ternary_not_loop_dependent);
 
