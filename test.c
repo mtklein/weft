@@ -1041,12 +1041,17 @@ static size_t ternary_constant_prop(Builder* b) {
 
     return store_32(b,0, x);
 }
-
 static size_t ternary_loop_dependent(Builder* b) {
     V32 one  = weft_uniform_32(b,2),
         oneF = weft_uniform_32(b,4),
         x    = weft_load_32(b,1);
     return store_32(b,0, weft_sel_32(b, weft_lt_s32(b,oneF,one), oneF, x));
+}
+static size_t ternary_not_loop_dependent(Builder* b) {
+    V32 one  = weft_uniform_32(b,2),
+        oneF = weft_uniform_32(b,4),
+        x    = weft_load_32(b,1);
+    return store_32(b,0, weft_mul_i32(b, x, weft_sel_32(b, weft_lt_s32(b,one,oneF), one, oneF)));
 }
 
 int main(void) {
@@ -1149,6 +1154,7 @@ int main(void) {
 
     test(ternary_constant_prop);
     test(ternary_loop_dependent);
+    test(ternary_not_loop_dependent);
 
     return 0;
 }
