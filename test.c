@@ -972,6 +972,25 @@ static size_t comparisons_f64(Builder* b) {
     return store_64(b,0,x);
 }
 
+static size_t narrow_widen_i8(Builder* b) {
+    V8 x = weft_load_8(b,1),
+       s = weft_narrow_i16(b, weft_widen_s8(b,x)),
+       u = weft_narrow_i16(b, weft_widen_u8(b,x));
+    return store_8(b,0, weft_and_8(b, s,u));
+}
+static size_t narrow_widen_i16(Builder* b) {
+    V16 x = weft_load_16(b,1),
+        s = weft_narrow_i32(b, weft_widen_s16(b,x)),
+        u = weft_narrow_i32(b, weft_widen_u16(b,x));
+    return store_16(b,0, weft_and_16(b, s,u));
+}
+static size_t narrow_widen_i32(Builder* b) {
+    V32 x = weft_load_32(b,1),
+        s = weft_narrow_i64(b, weft_widen_s32(b,x)),
+        u = weft_narrow_i64(b, weft_widen_u32(b,x));
+    return store_32(b,0, weft_and_32(b, s,u));
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -1060,6 +1079,10 @@ int main(void) {
     test(comparisons_f16);
     test(comparisons_f32);
     test(comparisons_f64);
+
+    test(narrow_widen_i8);
+    test(narrow_widen_i16);
+    test(narrow_widen_i32);
 
     return 0;
 }
