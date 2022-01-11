@@ -792,6 +792,61 @@ static size_t bic_64(Builder* b) {
     return store_64(b,0, weft_sel_64(b, weft_lt_s64(b,x,y), weft_splat_64(b,0), x));
 }
 
+static size_t comparisons_f16(Builder* b) {
+    V16 x = weft_load_16(b,1),
+        y = weft_load_16(b,1),
+        z = weft_add_i16(b, x, weft_splat_16(b,1));
+
+    x = weft_and_16(b,x, weft_eq_f16(b,x,y));
+    x = weft_xor_16(b,x, weft_eq_f16(b,x,z));
+
+    x = weft_xor_16(b,x, weft_lt_f16(b,x,y));
+    x = weft_and_16(b,x, weft_lt_f16(b,x,z));
+    x = weft_xor_16(b,x, weft_lt_f16(b,z,x));
+
+    x = weft_and_16(b,x, weft_le_f16(b,x,y));
+    x = weft_and_16(b,x, weft_le_f16(b,x,z));
+    x = weft_xor_16(b,x, weft_le_f16(b,z,x));
+
+    return store_16(b,0,x);
+}
+static size_t comparisons_f32(Builder* b) {
+    V32 x = weft_load_32(b,1),
+        y = weft_load_32(b,1),
+        z = weft_add_i32(b, x, weft_splat_32(b,1));
+
+    x = weft_and_32(b,x, weft_eq_f32(b,x,y));
+    x = weft_xor_32(b,x, weft_eq_f32(b,x,z));
+
+    x = weft_xor_32(b,x, weft_lt_f32(b,x,y));
+    x = weft_and_32(b,x, weft_lt_f32(b,x,z));
+    x = weft_xor_32(b,x, weft_lt_f32(b,z,x));
+
+    x = weft_and_32(b,x, weft_le_f32(b,x,y));
+    x = weft_and_32(b,x, weft_le_f32(b,x,z));
+    x = weft_xor_32(b,x, weft_le_f32(b,z,x));
+
+    return store_32(b,0,x);
+}
+static size_t comparisons_f64(Builder* b) {
+    V64 x = weft_load_64(b,1),
+        y = weft_load_64(b,1),
+        z = weft_add_i64(b, x, weft_splat_64(b,1));
+
+    x = weft_and_64(b,x, weft_eq_f64(b,x,y));
+    x = weft_xor_64(b,x, weft_eq_f64(b,x,z));
+
+    x = weft_xor_64(b,x, weft_lt_f64(b,x,y));
+    x = weft_and_64(b,x, weft_lt_f64(b,x,z));
+    x = weft_xor_64(b,x, weft_lt_f64(b,z,x));
+
+    x = weft_and_64(b,x, weft_le_f64(b,x,y));
+    x = weft_and_64(b,x, weft_le_f64(b,x,z));
+    x = weft_xor_64(b,x, weft_le_f64(b,z,x));
+
+    return store_64(b,0,x);
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -871,6 +926,10 @@ int main(void) {
     test(bic_16);
     test(bic_32);
     test(bic_64);
+
+    test(comparisons_f16);
+    test(comparisons_f32);
+    test(comparisons_f64);
 
     return 0;
 }
