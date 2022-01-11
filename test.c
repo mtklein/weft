@@ -750,6 +750,27 @@ static size_t shiftv_64(Builder* b) {
     return store_64(b,0,x);
 }
 
+static size_t or_8(Builder* b) {
+    V8 x = weft_load_8(b,1),
+       y = weft_load_8(b,1);
+    return store_8(b,0, weft_or_8(b,x,y));
+}
+static size_t or_16(Builder* b) {
+    V16 x = weft_load_16(b,1),
+        y = weft_load_16(b,1);
+    return store_16(b,0, weft_or_16(b,x,y));
+}
+static size_t or_32(Builder* b) {
+    V32 x = weft_load_32(b,1),
+        y = weft_load_32(b,1);
+    return store_32(b,0, weft_or_32(b,x,y));
+}
+static size_t or_64(Builder* b) {
+    V64 x = weft_load_64(b,1),
+        y = weft_load_64(b,1);
+    return store_64(b,0, weft_or_64(b,x,y));
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -819,6 +840,11 @@ int main(void) {
     test(shiftv_16);
     test(shiftv_32);
     test(shiftv_64);
+
+    test(or_8);
+    test(or_16);
+    test(or_32);
+    test(or_64);
 
     return 0;
 }
