@@ -109,7 +109,7 @@ stage(done) {
 
 static int constant_prop(Builder* b, const BInst* inst) {
     if (inst->kind == MATH
-            && (!inst->x || b->inst[inst->x-1].kind == SPLAT)
+            && (            b->inst[inst->x-1].kind == SPLAT)
             && (!inst->y || b->inst[inst->y-1].kind == SPLAT)
             && (!inst->z || b->inst[inst->z-1].kind == SPLAT)) {
         PInst program[5], *p=program;
