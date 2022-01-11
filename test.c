@@ -39,6 +39,17 @@ static void test_nearly_nothing() {
     free(p);
 }
 
+static void test_just_about_nothing() {
+    Program* p = NULL;
+    {
+        Builder* b = weft_builder();
+        weft_splat_32(b, 0x42);
+        p = weft_compile(b);
+    }
+    weft_run(p, 31, NULL);
+    free(p);
+}
+
 static void test_memset8() {
     Program* p = NULL;
     {
@@ -1041,6 +1052,7 @@ static size_t ternary_loop_dependent(Builder* b) {
 int main(void) {
     test_nothing();
     test_nearly_nothing();
+    test_just_about_nothing();
 
     test_memset8();
     test_memset16();
