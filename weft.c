@@ -134,7 +134,7 @@ static int constant_prop(Builder* b, const BInst* inst) {
 
         int64_t imm;
         char v[4*sizeof(imm)*N];
-        assert((slots + inst->slots)*N <= (int)sizeof(v));
+        assert((slots + inst->slots)*N <= (int)sizeof(v)); (void)0;
         program->fn(program,0,0,v,v,NULL);
         memcpy(&imm, v + slots*N, sizeof(imm));
 
@@ -262,7 +262,7 @@ Program* weft_compile(Builder* b) {
             }
         }
     }
-    assert(insts == live_insts);
+    assert(insts == live_insts); (void)0;
 
     free(meta);
     free(b->inst);
