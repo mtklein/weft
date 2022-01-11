@@ -8,7 +8,6 @@
 // TODO: loadN/storeN
 // TODO: full condition coverage in tests
 // TODO: test GCC with -march=armv8.2-a+fp16
-// TODO: narrow/widen for float types
 
 #define N 8
 
@@ -593,23 +592,29 @@ INT_STAGES(64,int64_t,uint64_t)
 stage(narrow_i16) { int8_t  *r=R; int16_t *x=v(x); each r[i] = (int8_t )x[i]; next(r+N); }
 stage(narrow_i32) { int16_t *r=R; int32_t *x=v(x); each r[i] = (int16_t)x[i]; next(r+N); }
 stage(narrow_i64) { int32_t *r=R; int64_t *x=v(x); each r[i] = (int32_t)x[i]; next(r+N); }
+stage(narrow_f32) { __fp16  *r=R; float   *x=v(x); each r[i] = (__fp16 )x[i]; next(r+N); }
+stage(narrow_f64) { float   *r=R; double  *x=v(x); each r[i] = (float  )x[i]; next(r+N); }
 
-stage(widen_s8)  { int16_t *r=R; int8_t  *x=v(x); each r[i] = (int16_t)x[i]; next(r+N); }
-stage(widen_s16) { int32_t *r=R; int16_t *x=v(x); each r[i] = (int32_t)x[i]; next(r+N); }
-stage(widen_s32) { int64_t *r=R; int32_t *x=v(x); each r[i] = (int64_t)x[i]; next(r+N); }
-
+stage(widen_s8)  {  int16_t *r=R;  int8_t  *x=v(x); each r[i] = ( int16_t)x[i]; next(r+N); }
+stage(widen_s16) {  int32_t *r=R;  int16_t *x=v(x); each r[i] = ( int32_t)x[i]; next(r+N); }
+stage(widen_s32) {  int64_t *r=R;  int32_t *x=v(x); each r[i] = ( int64_t)x[i]; next(r+N); }
 stage(widen_u8)  { uint16_t *r=R; uint8_t  *x=v(x); each r[i] = (uint16_t)x[i]; next(r+N); }
 stage(widen_u16) { uint32_t *r=R; uint16_t *x=v(x); each r[i] = (uint32_t)x[i]; next(r+N); }
 stage(widen_u32) { uint64_t *r=R; uint32_t *x=v(x); each r[i] = (uint64_t)x[i]; next(r+N); }
+stage(widen_f16) { float    *r=R; __fp16   *x=v(x); each r[i] = (float   )x[i]; next(r+N); }
+stage(widen_f32) { double   *r=R; float    *x=v(x); each r[i] = (double  )x[i]; next(r+N); }
 
 V8  weft_narrow_i16(Builder* b, V16 x) { return inst(b, MATH, 8,narrow_i16, .x=x.id); }
 V16 weft_narrow_i32(Builder* b, V32 x) { return inst(b, MATH,16,narrow_i32, .x=x.id); }
 V32 weft_narrow_i64(Builder* b, V64 x) { return inst(b, MATH,32,narrow_i64, .x=x.id); }
+V16 weft_narrow_f32(Builder* b, V32 x) { return inst(b, MATH,16,narrow_f32, .x=x.id); }
+V32 weft_narrow_f64(Builder* b, V64 x) { return inst(b, MATH,32,narrow_f64, .x=x.id); }
 
 V16 weft_widen_s8 (Builder* b, V8  x) { return inst(b, MATH,16,widen_s8 , .x=x.id); }
 V32 weft_widen_s16(Builder* b, V16 x) { return inst(b, MATH,32,widen_s16, .x=x.id); }
 V64 weft_widen_s32(Builder* b, V32 x) { return inst(b, MATH,64,widen_s32, .x=x.id); }
-
 V16 weft_widen_u8 (Builder* b, V8  x) { return inst(b, MATH,16,widen_u8 , .x=x.id); }
 V32 weft_widen_u16(Builder* b, V16 x) { return inst(b, MATH,32,widen_u16, .x=x.id); }
 V64 weft_widen_u32(Builder* b, V32 x) { return inst(b, MATH,64,widen_u32, .x=x.id); }
+V32 weft_widen_f16(Builder* b, V16 x) { return inst(b, MATH,32,widen_f16, .x=x.id); }
+V64 weft_widen_f32(Builder* b, V32 x) { return inst(b, MATH,64,widen_f32, .x=x.id); }

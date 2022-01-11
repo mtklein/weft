@@ -990,6 +990,14 @@ static size_t narrow_widen_i32(Builder* b) {
         u = weft_narrow_i64(b, weft_widen_u32(b,x));
     return store_32(b,0, weft_and_32(b, s,u));
 }
+static size_t narrow_widen_f16(Builder* b) {
+    V16 x = weft_load_16(b,1);
+    return store_16(b,0, weft_narrow_f32(b, weft_widen_f16(b,x)));
+}
+static size_t narrow_widen_f32(Builder* b) {
+    V32 x = weft_load_32(b,1);
+    return store_32(b,0, weft_narrow_f64(b, weft_widen_f32(b,x)));
+}
 
 int main(void) {
     test_nothing();
@@ -1083,6 +1091,8 @@ int main(void) {
     test(narrow_widen_i8);
     test(narrow_widen_i16);
     test(narrow_widen_i32);
+    test(narrow_widen_f16);
+    test(narrow_widen_f32);
 
     return 0;
 }
