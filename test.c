@@ -1,4 +1,5 @@
 #include "weft.h"
+#include "weft_jit.h"
 #undef NDEBUG
 #include <assert.h>
 #include <stddef.h>
@@ -1075,6 +1076,19 @@ static size_t hash_collision(Builder* b) {
     return store_32(b,0, weft_load_32(b,1));
 }
 
+static void test_jit_linking() {
+#if defined(__arm64__)
+    uint32_t inst;
+    int d = 7;
+
+    char* buf = (char*)&inst;
+    assert(buf+4 == weft_emit_splat_8(buf, &d,NULL,NULL,NULL,0x23));
+    assert(inst == 0xface0723);
+#else
+    assert(weft_emit_splat_8(NULL, NULL,NULL,NULL,NULL, 0) == NULL);
+#endif
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -1178,6 +1192,8 @@ int main(void) {
     test(ternary_loop_dependent);
     test(ternary_not_loop_dependent);
     test(hash_collision);
+
+    test_jit_linking();
 
     return 0;
 }

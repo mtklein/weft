@@ -36,18 +36,22 @@ gcc    = gcc-11 -O3 -Wall -Wextra -fdiagnostics-color
 
 build out/opt/weft.o: compile weft.c
     cc = $opt
+build out/opt/weft_jit.o: compile weft_jit_arm64.c
+    cc = $opt
 build out/opt/test.o: compile test.c
     cc = $opt
-build out/opt/test: link out/opt/weft.o out/opt/test.o
+build out/opt/test: link out/opt/weft.o out/opt/weft_jit.o out/opt/test.o
     cc = $opt
 build out/opt/test.ok: run out/opt/test
 
 
 build out/lto/weft.o: compile weft.c
     cc = $lto
+build out/lto/weft_jit.o: compile weft_jit_arm64.c
+    cc = $lto
 build out/lto/test.o: compile test.c
     cc = $lto
-build out/lto/test: link out/lto/weft.o out/lto/test.o
+build out/lto/test: link out/lto/weft.o out/lto/weft_jit.o out/lto/test.o
     cc = $lto
 build out/lto/test.ok: run out/lto/test
 
@@ -63,9 +67,11 @@ build out/x86_64/test.ok: run out/x86_64/test
 
 build out/misc/weft.o: compile weft.c
     cc = $misc
+build out/misc/weft_jit.o: compile weft_jit_arm64.c
+    cc = $misc
 build out/misc/test.o: compile test.c
     cc = $misc
-build out/misc/test: link out/misc/weft.o out/misc/test.o
+build out/misc/test: link out/misc/weft.o out/misc/weft_jit.o out/misc/test.o
     cc = $misc
 build out/misc/test.ok | out/misc/test.profraw: run out/misc/test
     runtime = env ASAN_OPTIONS=detect_leaks=1 LLVM_PROFILE_FILE=out/misc/test.profraw
@@ -97,8 +103,10 @@ build out/wasmE/test.ok: run out/wasmE/test.wasm
 
 build out/gcc/weft.o: compile weft.c
     cc = $gcc
+build out/gcc/weft_jit.o: compile weft_jit_arm64.c
+    cc = $gcc
 build out/gcc/test.o: compile test.c
     cc = $gcc
-build out/gcc/test: link out/gcc/weft.o out/gcc/test.o
+build out/gcc/test: link out/gcc/weft.o out/gcc/weft_jit.o out/gcc/test.o
     cc = $gcc
 build out/gcc/test.ok: run out/gcc/test

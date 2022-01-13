@@ -1,4 +1,5 @@
 #include "weft.h"
+#include "weft_jit.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -36,6 +37,8 @@ typedef struct {
     int slots                                             : 16;
     void (*fn  )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
     void (*done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
+    weft_emit_fn* emit;
+    void*         unused;
 } BInst;
 
 typedef struct weft_Builder {
@@ -182,7 +185,8 @@ static int inst_(Builder* b, BInst inst) {
     }
     return id;
 }
-#define inst(b,k,bits,f,...) (V##bits){inst_(b,(BInst){.kind=k, .slots=bits/8, .fn=f, __VA_ARGS__})}
+#define inst(b,k,bits,f,...) \
+    (V##bits){inst_(b,(BInst){.kind=k, .slots=bits/8, .fn=f, .emit=weft_emit_##f, __VA_ARGS__})}
 
 void weft_run(const weft_Program* p, int n, void* const ptr[]) {
     void* V = malloc(N * (size_t)p->slots);
@@ -611,3 +615,54 @@ V32 weft_widen_u16(Builder* b, V16 x) { return inst(b, MATH,32,widen_u16, .x=x.i
 V64 weft_widen_u32(Builder* b, V32 x) { return inst(b, MATH,64,widen_u32, .x=x.id); }
 V32 weft_widen_f16(Builder* b, V16 x) { return inst(b, MATH,32,widen_f16, .x=x.id); }
 V64 weft_widen_f32(Builder* b, V32 x) { return inst(b, MATH,64,widen_f32, .x=x.id); }
+
+#define stub(name)                                                                       \
+    __attribute__((weak))                                                                \
+    char* weft_emit_##name(char* buf, int d[], int x[], int y[], int z[], int64_t imm) { \
+        (void)buf; (void)d; (void)x; (void)y; (void)z; (void)imm;                        \
+        return NULL;                                                                     \
+    }
+
+stub(splat_8 ) stub(uniform_8 ) stub(load_8 ) stub(store_8 ) stub(assert_8 )
+stub(splat_16) stub(uniform_16) stub(load_16) stub(store_16) stub(assert_16)
+stub(splat_32) stub(uniform_32) stub(load_32) stub(store_32) stub(assert_32)
+stub(splat_64) stub(uniform_64) stub(load_64) stub(store_64) stub(assert_64)
+
+stub(not_8 ) stub(and_8 ) stub(bic_8 ) stub(or_8 ) stub(xor_8 ) stub(sel_8 )
+stub(not_16) stub(and_16) stub(bic_16) stub(or_16) stub(xor_16) stub(sel_16)
+stub(not_32) stub(and_32) stub(bic_32) stub(or_32) stub(xor_32) stub(sel_32)
+stub(not_64) stub(and_64) stub(bic_64) stub(or_64) stub(xor_64) stub(sel_64)
+
+stub(shli_i8 ) stub(shri_s8 ) stub(shri_u8 ) stub(shlv_i8 ) stub(shrv_s8 ) stub(shrv_u8 )
+stub(shli_i16) stub(shri_s16) stub(shri_u16) stub(shlv_i16) stub(shrv_s16) stub(shrv_u16)
+stub(shli_i32) stub(shri_s32) stub(shri_u32) stub(shlv_i32) stub(shrv_s32) stub(shrv_u32)
+stub(shli_i64) stub(shri_s64) stub(shri_u64) stub(shlv_i64) stub(shrv_s64) stub(shrv_u64)
+
+stub(add_i8 ) stub(sub_i8 ) stub(mul_i8 )
+stub(add_i16) stub(sub_i16) stub(mul_i16)
+stub(add_i32) stub(sub_i32) stub(mul_i32)
+stub(add_i64) stub(sub_i64) stub(mul_i64)
+
+stub(eq_i8 ) stub(lt_s8 ) stub(lt_u8 ) stub(le_s8 ) stub(le_u8 )
+stub(eq_i16) stub(lt_s16) stub(lt_u16) stub(le_s16) stub(le_u16)
+stub(eq_i32) stub(lt_s32) stub(lt_u32) stub(le_s32) stub(le_u32)
+stub(eq_i64) stub(lt_s64) stub(lt_u64) stub(le_s64) stub(le_u64)
+
+stub(cast_f16) stub(cast_s16) stub(ceil_f16) stub(floor_f16) stub(sqrt_f16)
+stub(cast_f32) stub(cast_s32) stub(ceil_f32) stub(floor_f32) stub(sqrt_f32)
+stub(cast_f64) stub(cast_s64) stub(ceil_f64) stub(floor_f64) stub(sqrt_f64)
+
+stub(add_f16) stub(sub_f16) stub(mul_f16) stub(div_f16)
+stub(add_f32) stub(sub_f32) stub(mul_f32) stub(div_f32)
+stub(add_f64) stub(sub_f64) stub(mul_f64) stub(div_f64)
+
+stub(eq_f16) stub(lt_f16) stub(le_f16)
+stub(eq_f32) stub(lt_f32) stub(le_f32)
+stub(eq_f64) stub(lt_f64) stub(le_f64)
+
+stub(narrow_i16) stub(narrow_i32) stub(narrow_i64)
+                 stub(narrow_f32) stub(narrow_f64)
+
+stub(widen_s8) stub(widen_s16) stub(widen_s32)
+stub(widen_u8) stub(widen_u16) stub(widen_u32)
+               stub(widen_f16) stub(widen_f32)
