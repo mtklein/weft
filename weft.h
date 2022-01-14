@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 
 // General Weft usage and object lifetime:
@@ -25,6 +26,8 @@ typedef struct weft_Program weft_Program;
 weft_Builder* weft_builder(void);
 weft_Program* weft_compile(weft_Builder*);
 void          weft_run    (const weft_Program*, int n, void* const ptr[]);
+
+size_t weft_jit(const weft_Builder*, void*);
 
 typedef struct { int id; } weft_V8;
 typedef struct { int id; } weft_V16;

@@ -616,6 +616,45 @@ V64 weft_widen_u32(Builder* b, V32 x) { return inst(b, MATH,64,widen_u32, .x=x.i
 V32 weft_widen_f16(Builder* b, V16 x) { return inst(b, MATH,32,widen_f16, .x=x.id); }
 V64 weft_widen_f32(Builder* b, V32 x) { return inst(b, MATH,64,widen_f32, .x=x.id); }
 
+size_t weft_jit(const Builder* b, void* vbuf) {
+    void* const top = vbuf;
+    char scratch[64];
+
+    size_t len = 0;
+    for (int i = 0; i < b->inst_len; i++) {
+        const BInst inst = b->inst[i];
+
+        char* buf = vbuf ? vbuf : scratch;
+        char* next = inst.emit(buf, NULL,NULL,NULL,NULL, inst.imm);
+        if (!next) {
+            return 0;
+        }
+        len += (size_t)(next - buf);
+        vbuf = vbuf ? next : vbuf;
+    }
+
+    char* buf = vbuf ? vbuf : scratch;
+    char* next = weft_emit_loop(buf, top);
+    if (!next) {
+        return 0;
+    }
+    len += (size_t)(next - buf);
+    vbuf = vbuf ? next : vbuf;
+
+    return len;
+}
+
+__attribute__((weak))
+uint32_t weft_regs() {
+    return 0;
+}
+
+__attribute__((weak))
+char* weft_emit_loop(char* buf, char* label) {
+    (void)buf; (void)label;
+    return NULL;
+}
+
 #define stub(name)                                                                       \
     __attribute__((weak))                                                                \
     char* weft_emit_##name(char* buf, int d[], int x[], int y[], int z[], int64_t imm) { \

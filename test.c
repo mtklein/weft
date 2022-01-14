@@ -6,6 +6,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__aarch64__)
+    #include <sys/mman.h>
+#endif
 
 #define len(arr) (int)(sizeof(arr) / sizeof(*arr))
 
@@ -1076,17 +1079,43 @@ static size_t hash_collision(Builder* b) {
     return store_32(b,0, weft_load_32(b,1));
 }
 
-static void test_jit_linking() {
-#if defined(__arm64__)
-    uint32_t inst;
-    int d = 7;
+static void (*jit(const Builder* b, size_t* len))(int, void*,void*,void*,void*,void*,void*,void*) {
+#if defined(MAP_ANONYMOUS)
+    *len = weft_jit(b,NULL);
+    assert(*len);
 
-    char* buf = (char*)&inst;
-    assert(buf+4 == weft_emit_splat_8(buf, &d,NULL,NULL,NULL,0x23));
-    assert(inst == 0xface0723);
+    void* buf = mmap(NULL,*len, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1,0);
+    assert((uintptr_t)buf != ~(uintptr_t)0);
+
+    assert(*len == weft_jit(b,buf));
+    assert(0 == mprotect(buf,*len, PROT_READ|PROT_EXEC));
+
+    return (void(*)(int, void*,void*,void*,void*,void*,void*,void*))buf;
 #else
-    assert(weft_emit_splat_8(NULL, NULL,NULL,NULL,NULL, 0) == NULL);
+    assert(!weft_jit(b,NULL));
+    *len = 0;
+    return NULL;
 #endif
+}
+
+static void drop(void (*fn)(int, void*,void*,void*,void*,void*,void*,void*), size_t len) {
+#if defined(MAP_ANONYMOUS)
+    munmap((void*)fn,len);
+#else
+    assert(!fn && !len);
+#endif
+}
+
+static void test_jit_loop() {
+    Builder* b = weft_builder();
+
+    size_t len = 0;
+    void (*fn)(int, void*,void*,void*,void*,void*,void*,void*) = jit(b, &len);
+    if (fn) {
+        fn(42, NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+    }
+    drop(fn,len);
+    free(weft_compile(b));
 }
 
 int main(void) {
@@ -1193,7 +1222,7 @@ int main(void) {
     test(ternary_not_loop_dependent);
     test(hash_collision);
 
-    test_jit_linking();
+    test_jit_loop();
 
     return 0;
 }

@@ -1,17 +1,32 @@
 #include "weft_jit.h"
 #include <string.h>
 
-#define mask(bits) ((1<<bits)-1)
+// x0:    n
+// x1-x7: ptr0-ptr6
+// x8:    i
+// x9:    tmp
+
+//#define mask(bits) ((1<<bits)-1)
 #define emit(buf,inst) (memcpy(buf, &inst, sizeof inst), buf+sizeof(inst))
 
-char* weft_emit_splat_8(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
-    (void)x; (void)y; (void)z;
+static char* emit4(char* buf, uint32_t inst) { return emit(buf, inst); }
+
+uint32_t weft_regs() {
+    return 0xffff00ff;   // v0-7 and v16-31 are free to use (v8-v15 are callee saved).
+}
+
+char* weft_emit_loop(char* buf, char* top) {
+    buf = emit4(buf, 0xf1000400/*subs x0,x0,1 == subs n,n,1*/);
+
     struct {
-        uint32_t i :  8;
-        uint32_t d :  8;
-        uint32_t t : 16;
-    } inst = {imm & mask(8), d[0] & mask(5), 0xface};
-    return emit(buf, inst);
+        uint32_t cond :  4;
+        uint32_t zero :  1;
+         int32_t span : 19;
+        uint32_t high :  8;
+    } bne_top = {0x1/*ne*/, 0, (int)(top-buf)/4, 0x54};
+    buf = emit(buf, bne_top);
+
+    return emit4(buf, 0xd65f03c0/*ret lr*/);
 }
 
 #if 0

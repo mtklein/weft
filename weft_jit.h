@@ -2,7 +2,10 @@
 
 #include <stdint.h>
 
-typedef char* weft_emit_fn(char*, int[], int[], int[], int[], int64_t);
+uint32_t weft_regs(void);
+char*    weft_emit_loop(char* buf, char* label);
+
+typedef char* weft_emit_fn(char* buf, int[], int[], int[], int[], int64_t);
 
 weft_emit_fn
     weft_emit_splat_8,
