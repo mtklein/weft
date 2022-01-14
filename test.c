@@ -1116,6 +1116,22 @@ static void test_jit_loop() {
     free(weft_compile(b));
 }
 
+static void test_jit_splat() {
+    Builder* b = weft_builder();
+    weft_splat_8 (b, 0x42);
+    weft_splat_16(b, 0x4243);
+    weft_splat_32(b, 0x42434445);
+    weft_splat_64(b, 0x4243444546474849);
+
+    size_t len = 0;
+    void (*fn)(int, void*,void*,void*,void*,void*,void*,void*) = jit(b, &len);
+    if (fn) {
+        fn(42, NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+    }
+    drop(fn,len);
+    free(weft_compile(b));
+}
+
 int main(void) {
     test_nothing();
     test_nearly_nothing();
@@ -1221,6 +1237,7 @@ int main(void) {
     test(hash_collision);
 
     test_jit_loop();
+    test_jit_splat();
 
     return 0;
 }

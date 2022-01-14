@@ -2,8 +2,9 @@
 
 #include <stdint.h>
 
-uint32_t weft_regs(void);
-char*    weft_emit_loop(char* buf, char* label);
+char* weft_emit_breakpoint(char* buf);
+void  weft_init_regs(int[32]);
+char* weft_emit_loop(char* buf, char* label);
 
 typedef char* weft_emit_fn(char* buf, int[], int[], int[], int[], int64_t);
 

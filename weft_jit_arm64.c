@@ -6,13 +6,18 @@
 // x8:    i
 // x9:    tmp
 
-//#define mask(bits) ((1<<bits)-1)
-#define emit(buf,inst) (memcpy(buf, &inst, sizeof inst), buf+sizeof(inst))
+static const int tmp = 9;
 
+#define mask(x,bits) ((uint32_t)x) & ((1<<bits)-1)
+#define emit(buf,inst) (memcpy(buf, &inst, sizeof inst), buf+sizeof(inst))
 static char* emit4(char* buf, uint32_t inst) { return emit(buf, inst); }
 
-uint32_t weft_regs() {
-    return 0xffff00ff;   // v0-7 and v16-31 are free to use (v8-v15 are callee saved).
+char* weft_emit_breakpoint(char* buf) {
+    return emit4(buf, 0xd43e0000);
+}
+
+void weft_init_regs(int reg[32]) {
+    for (int i = 8; i < 16; i++) { reg[i] = -1; }  // v8-v15 are callee saved.
 }
 
 char* weft_emit_loop(char* buf, char* top) {
@@ -29,45 +34,68 @@ char* weft_emit_loop(char* buf, char* top) {
     return emit4(buf, 0xd65f03c0/*ret lr*/);
 }
 
-#if 0
-uint32_t* emit_splat_8(uint32_t* buf, int d[], int x[], int y[], int z[], int64_t imm) {
-    (void)x;
-    (void)y;
-    (void)z;
-    // mov     w0, imm & 0xff
-    // dup.8b  d[0], w0
-    return buf;
+static char* movz(char* buf, int Rd, int64_t imm, int hw) {
+    struct {
+        uint32_t Rd  :  5;
+        uint32_t imm : 16;
+        uint32_t hw  :  2;
+        uint32_t opc :  8;
+        uint32_t sf  :  1;
+    } inst = {mask(Rd,5), mask(imm,16), mask(hw,2), 0xa5, 1};
+    return emit(buf, inst);
 }
-uint32_t* emit_splat_16(uint32_t* buf, int d[], int x[], int y[], int z[], int64_t imm) {
-    (void)x;
-    (void)y;
-    (void)z;
-    // mov     w0, imm & 0xffff
-    // dup.8h  d[0], w0
-    return buf;
+static char* movk(char* buf, int Rd, int64_t imm, int hw) {
+    struct {
+        uint32_t Rd  :  5;
+        uint32_t imm : 16;
+        uint32_t hw  :  2;
+        uint32_t opc :  8;
+        uint32_t sf  :  1;
+    } inst = {mask(Rd,5), mask(imm,16), mask(hw,2), 0xe5, 1};
+    return emit(buf, inst);
 }
-uint32_t* emit_splat_32(uint32_t* buf, int d[], int x[], int y[], int z[], int64_t imm) {
-    (void)x;
-    (void)y;
-    (void)z;
-    // mov     w0, (imm      ) & 0xffff
-    // movk    w0, (imm >> 16) & 0xffff
-    // dup.4s  d[0], w0
-    // orr.16b d[1], d[0],d[0]
-    return buf;
+
+static char* dup(char* buf, int Rd, int Rn, int imm, int Q) {
+    struct {
+        uint32_t Rd  : 5;
+        uint32_t Rn  : 5;
+        uint32_t lo  : 6;
+        uint32_t imm : 5;
+        uint32_t hi  : 9;
+        uint32_t Q   : 1;
+        uint32_t z   : 1;
+    } inst = {mask(Rd,5), mask(Rn,5), 0x3, mask(imm,5), 0x70, mask(Q,1), 0};
+    return emit(buf, inst);
 }
-uint32_t* emit_splat_64(uint32_t* buf, int d[], int x[], int y[], int z[], int64_t imm) {
-    (void)x;
-    (void)y;
-    (void)z;
-    // mov     x0, (imm      ) & 0xffff
-    // movk    x0, (imm >> 16) & 0xffff
-    // movk    x0, (imm >> 32) & 0xffff
-    // movk    x0, (imm >> 48) & 0xffff
-    // dup.2d  d[0], x0
-    // orr.16b d[1], d[0],d[0]
-    // orr.16b d[2], d[0],d[0]
-    // orr.16b d[3], d[0],d[0]
-    return buf;
+
+char* weft_emit_splat_8(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+    (void)x; (void)y; (void)z;
+    buf = movz(buf, tmp, imm, 0);     // mov tmp, imm
+    return dup(buf, d[0], tmp, 1,0);  // dup.8b d[0], tmp
 }
-#endif
+
+char* weft_emit_splat_16(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+    (void)x; (void)y; (void)z;
+    buf = movz(buf, tmp, imm, 0);     // mov tmp, imm
+    return dup(buf, d[0], tmp, 2,1);  // dup.8h d[0],tmp
+}
+
+char* weft_emit_splat_32(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+    (void)x; (void)y; (void)z;
+    buf = movz(buf, tmp, imm>> 0, 0);  // mov  tmp, imm15:0
+    buf = movk(buf, tmp, imm>>16, 1);  // movk tmp, imm31:16
+    buf =  dup(buf, d[0], tmp, 4, 1);  // dup.4s d[0], tmp
+    return dup(buf, d[1], tmp, 4, 1);  // dup.4s d[1], tmp
+}
+
+char* weft_emit_splat_64(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+    (void)x; (void)y; (void)z;
+    buf = movz(buf, tmp, imm>> 0, 0);
+    buf = movk(buf, tmp, imm>>16, 1);
+    buf = movk(buf, tmp, imm>>32, 2);
+    buf = movk(buf, tmp, imm>>48, 3);
+    buf =  dup(buf, d[0], tmp, 8, 1);
+    buf =  dup(buf, d[1], tmp, 8, 1);
+    buf =  dup(buf, d[2], tmp, 8, 1);
+    return dup(buf, d[3], tmp, 8, 1);
+}

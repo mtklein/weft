@@ -616,21 +616,63 @@ V64 weft_widen_u32(Builder* b, V32 x) { return inst(b, MATH,64,widen_u32, .x=x.i
 V32 weft_widen_f16(Builder* b, V16 x) { return inst(b, MATH,32,widen_f16, .x=x.id); }
 V64 weft_widen_f32(Builder* b, V32 x) { return inst(b, MATH,64,widen_f32, .x=x.id); }
 
+static bool assign_reg(int reg[32], int frag, int* r) {
+    for (int i = 0; i < 32; i++) {
+        if (reg[i] == 0) {
+            reg[i] = frag;
+            *r = i;
+            return true;
+        }
+    }
+    return false;
+}
+
 size_t weft_jit(const Builder* b, void* vbuf) {
-    void* const top = vbuf;
     char scratch[64];
-
     size_t len = 0;
-    for (int i = 0; i < b->inst_len; i++) {
-        const BInst inst = b->inst[i];
 
+    int reg[32] = {0};
+    weft_init_regs(reg);
+
+    if ((0)) {
         char* buf = vbuf ? vbuf : scratch;
-        char* next = inst.emit(buf, NULL,NULL,NULL,NULL, inst.imm);
+        char* next = weft_emit_breakpoint(buf);
         if (!next) {
             return 0;
         }
         len += (size_t)(next - buf);
         vbuf = vbuf ? next : vbuf;
+    }
+
+    void* const top = vbuf;
+    for (int i = 0; i < b->inst_len; i++) {
+        const BInst inst = b->inst[i];
+
+        // 1-based value IDs throughout, leaving 0 as an empty register, -1 as a reserved register.
+        const int id = i+1;
+
+        // We split each value into fragments that fit in a register:
+        //    V8:  1 fragment  in 1 register (lower half)
+        //    V16: 1 fragment  in 1 register
+        //    V32: 2 fragments in 2 registers
+        //    V64: 4 fragments in 4 registers
+
+        // Find registers to hold inst's value.  TODO: spill to stack instead of failing.
+        int d[4];
+        if (inst.slots >= 1 && !assign_reg(reg, 4*id+0, d+0)) { return 0; }
+        if (inst.slots >= 4 && !assign_reg(reg, 4*id+1, d+1)) { return 0; }
+        if (inst.slots >= 8 && !assign_reg(reg, 4*id+2, d+2)) { return 0; }
+        if (inst.slots >= 8 && !assign_reg(reg, 4*id+3, d+3)) { return 0; }
+
+        char* buf = vbuf ? vbuf : scratch;
+        char* next = inst.emit(buf, d,NULL,NULL,NULL, inst.imm);
+        if (!next) {
+            return 0;
+        }
+        len += (size_t)(next - buf);
+        vbuf = vbuf ? next : vbuf;
+
+        // TODO: free up registers holding fragments of dead values.
     }
 
     char* buf = vbuf ? vbuf : scratch;
@@ -645,8 +687,13 @@ size_t weft_jit(const Builder* b, void* vbuf) {
 }
 
 __attribute__((weak))
-uint32_t weft_regs() {
-    return 0;
+char* weft_emit_breakpoint(char* buf) {
+    return buf;
+}
+
+__attribute__((weak))
+void weft_init_regs(int reg[32]) {
+    for (int i = 0; i < 32; i++) { reg[i] = -1; }  // Mark all registers as reserved.
 }
 
 __attribute__((weak))
