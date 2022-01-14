@@ -1080,20 +1080,18 @@ static size_t hash_collision(Builder* b) {
 }
 
 static void (*jit(const Builder* b, size_t* len))(int, void*,void*,void*,void*,void*,void*,void*) {
-#if defined(MAP_ANONYMOUS)
     *len = weft_jit(b,NULL);
+#if defined(MAP_ANONYMOUS)
     assert(*len);
-
     void* buf = mmap(NULL,*len, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1,0);
     assert((uintptr_t)buf != ~(uintptr_t)0);
 
     assert(*len == weft_jit(b,buf));
-    assert(0 == mprotect(buf,*len, PROT_READ|PROT_EXEC));
 
+    assert(0 == mprotect(buf,*len, PROT_READ|PROT_EXEC));
     return (void(*)(int, void*,void*,void*,void*,void*,void*,void*))buf;
 #else
-    assert(!weft_jit(b,NULL));
-    *len = 0;
+    assert(!*len);
     return NULL;
 #endif
 }
