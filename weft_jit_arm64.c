@@ -13,6 +13,10 @@ static const int Ri = 8,
 #define emit(buf,inst) (memcpy(buf, &inst, sizeof inst), buf+sizeof(inst))
 static char* emit4(char* buf, uint32_t inst) { return emit(buf, inst); }
 
+void weft_init_regs(int reg[32]) {
+    for (int i = 8; i < 16; i++) { reg[i] = -1; }  // v8-v15 are callee saved.
+}
+
 char* weft_emit_setup(char* buf) {
     if (weft_jit_debug_break) {
         buf = emit4(buf, 0xd43e0000);
@@ -20,28 +24,13 @@ char* weft_emit_setup(char* buf) {
     struct {
         uint32_t Rd  :  5;
         uint32_t top : 27;
-    } inst = {Ri, 0x550f81f};
-    return emit(buf, inst);
-}
-
-void weft_init_regs(int reg[32]) {
-    for (int i = 8; i < 16; i++) { reg[i] = -1; }  // v8-v15 are callee saved.
-}
-
-static char* add(char* buf, int Rd, int Rn, int Rm) {
-    struct {
-        uint32_t Rd  : 5;
-        uint32_t Rn  : 5;
-        uint32_t imm : 6;
-        uint32_t Rm  : 5;
-        uint32_t top : 11;
-    } inst = {mask(Rd,5), mask(Rn,5), 0, mask(Rm,5), 0x458};
+    } inst = {Ri, 0x550f81f};  // mov i, xzr
     return emit(buf, inst);
 }
 
 char* weft_emit_loop(char* buf, char* top) {
-    buf = emit4(buf, 0x91000508/*add  x8,x8,1 == add  i,i,1*/);
-    buf = emit4(buf, 0xf1000400/*subs x0,x0,1 == subs n,n,1*/);
+    buf = emit4(buf, 0x91000508);  // add  i,i,1
+    buf = emit4(buf, 0xf1000400);  // subs n,n,1
 
     struct {
         uint32_t cond :  4;
@@ -51,7 +40,7 @@ char* weft_emit_loop(char* buf, char* top) {
     } bne_top = {0x1/*ne*/, 0, (int)(top-buf)/4, 0x54};
     buf = emit(buf, bne_top);
 
-    return emit4(buf, 0xd65f03c0/*ret lr*/);
+    return emit4(buf, 0xd65f03c0); // ret lr
 }
 
 static char* movz(char* buf, int Rd, int64_t imm, int hw) {
@@ -120,6 +109,17 @@ char* weft_emit_splat_64(char* buf, int d[], int x[], int y[], int z[], int64_t 
     return dup(buf, d[3], Rtmp, 8, 1);
 }
 
+static char* add(char* buf, int Rd, int Rn, int Rm) {
+    struct {
+        uint32_t Rd  : 5;
+        uint32_t Rn  : 5;
+        uint32_t imm : 6;
+        uint32_t Rm  : 5;
+        uint32_t top : 11;
+    } inst = {mask(Rd,5), mask(Rn,5), 0, mask(Rm,5), 0x458};
+    return emit(buf, inst);
+}
+
 char* weft_emit_store_8(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
     (void)d; (void)y; (void)z;
     buf = add(buf, Rtmp, (int)imm+1, Ri);
@@ -127,6 +127,6 @@ char* weft_emit_store_8(char* buf, int d[], int x[], int y[], int z[], int64_t i
         uint32_t Rt  : 5;
         uint32_t Rn  : 5;
         uint32_t top : 22;
-    } st1b_x0_tmp = {mask(x[0], 5), Rtmp, 0x34000};
+    } st1b_x0_tmp = {mask(x[0],5), Rtmp, 0x34000};
     return emit(buf, st1b_x0_tmp);
 }

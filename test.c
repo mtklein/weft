@@ -1136,7 +1136,6 @@ static void test_jit_memset() {
     Builder* b = weft_builder();
     weft_store_8(b,0, weft_splat_8(b, 0x42));
 
-
     size_t len = 0;
     void (*fn)(int, void*,void*,void*,void*,void*,void*,void*) = jit(b, &len);
     if (fn) {
