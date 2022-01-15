@@ -1,8 +1,11 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
-char* weft_emit_breakpoint(char* buf);
+extern bool weft_jit_debug_break;
+
+char* weft_emit_setup(char* buf);
 void  weft_init_regs(int[32]);
 char* weft_emit_loop(char* buf, char* label);
 

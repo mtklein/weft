@@ -6,21 +6,41 @@
 // x8:    i
 // x9:    tmp
 
-static const int tmp = 9;
+static const int Ri = 8,
+               Rtmp = 9;
 
 #define mask(x,bits) ((uint32_t)x) & ((1<<bits)-1)
 #define emit(buf,inst) (memcpy(buf, &inst, sizeof inst), buf+sizeof(inst))
 static char* emit4(char* buf, uint32_t inst) { return emit(buf, inst); }
 
-char* weft_emit_breakpoint(char* buf) {
-    return emit4(buf, 0xd43e0000);
+char* weft_emit_setup(char* buf) {
+    if (weft_jit_debug_break) {
+        buf = emit4(buf, 0xd43e0000);
+    }
+    struct {
+        uint32_t Rd  :  5;
+        uint32_t top : 27;
+    } inst = {Ri, 0x550f81f};
+    return emit(buf, inst);
 }
 
 void weft_init_regs(int reg[32]) {
     for (int i = 8; i < 16; i++) { reg[i] = -1; }  // v8-v15 are callee saved.
 }
 
+static char* add(char* buf, int Rd, int Rn, int Rm) {
+    struct {
+        uint32_t Rd  : 5;
+        uint32_t Rn  : 5;
+        uint32_t imm : 6;
+        uint32_t Rm  : 5;
+        uint32_t top : 11;
+    } inst = {mask(Rd,5), mask(Rn,5), 0, mask(Rm,5), 0x458};
+    return emit(buf, inst);
+}
+
 char* weft_emit_loop(char* buf, char* top) {
+    buf = emit4(buf, 0x91000508/*add  x8,x8,1 == add  i,i,1*/);
     buf = emit4(buf, 0xf1000400/*subs x0,x0,1 == subs n,n,1*/);
 
     struct {
@@ -70,32 +90,43 @@ static char* dup(char* buf, int Rd, int Rn, int imm, int Q) {
 
 char* weft_emit_splat_8(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
     (void)x; (void)y; (void)z;
-    buf = movz(buf, tmp, imm, 0);     // mov tmp, imm
-    return dup(buf, d[0], tmp, 1,0);  // dup.8b d[0], tmp
+    buf = movz(buf, Rtmp, imm, 0);     // mov tmp, imm
+    return dup(buf, d[0], Rtmp, 1,0);  // dup.8b d[0], tmp
 }
 
 char* weft_emit_splat_16(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
     (void)x; (void)y; (void)z;
-    buf = movz(buf, tmp, imm, 0);     // mov tmp, imm
-    return dup(buf, d[0], tmp, 2,1);  // dup.8h d[0],tmp
+    buf = movz(buf, Rtmp, imm, 0);     // mov tmp, imm
+    return dup(buf, d[0], Rtmp, 2,1);  // dup.8h d[0],tmp
 }
 
 char* weft_emit_splat_32(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
     (void)x; (void)y; (void)z;
-    buf = movz(buf, tmp, imm>> 0, 0);  // mov  tmp, imm15:0
-    buf = movk(buf, tmp, imm>>16, 1);  // movk tmp, imm31:16
-    buf =  dup(buf, d[0], tmp, 4, 1);  // dup.4s d[0], tmp
-    return dup(buf, d[1], tmp, 4, 1);  // dup.4s d[1], tmp
+    buf = movz(buf, Rtmp, imm>> 0, 0);  // mov  tmp, imm15:0
+    buf = movk(buf, Rtmp, imm>>16, 1);  // movk tmp, imm31:16
+    buf =  dup(buf, d[0], Rtmp, 4, 1);  // dup.4s d[0], tmp
+    return dup(buf, d[1], Rtmp, 4, 1);  // dup.4s d[1], tmp
 }
 
 char* weft_emit_splat_64(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
     (void)x; (void)y; (void)z;
-    buf = movz(buf, tmp, imm>> 0, 0);
-    buf = movk(buf, tmp, imm>>16, 1);
-    buf = movk(buf, tmp, imm>>32, 2);
-    buf = movk(buf, tmp, imm>>48, 3);
-    buf =  dup(buf, d[0], tmp, 8, 1);
-    buf =  dup(buf, d[1], tmp, 8, 1);
-    buf =  dup(buf, d[2], tmp, 8, 1);
-    return dup(buf, d[3], tmp, 8, 1);
+    buf = movz(buf, Rtmp, imm>> 0, 0);
+    buf = movk(buf, Rtmp, imm>>16, 1);
+    buf = movk(buf, Rtmp, imm>>32, 2);
+    buf = movk(buf, Rtmp, imm>>48, 3);
+    buf =  dup(buf, d[0], Rtmp, 8, 1);
+    buf =  dup(buf, d[1], Rtmp, 8, 1);
+    buf =  dup(buf, d[2], Rtmp, 8, 1);
+    return dup(buf, d[3], Rtmp, 8, 1);
+}
+
+char* weft_emit_store_8(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+    (void)d; (void)y; (void)z;
+    buf = add(buf, Rtmp, (int)imm+1, Ri);
+    struct {
+        uint32_t Rt  : 5;
+        uint32_t Rn  : 5;
+        uint32_t top : 22;
+    } st1b_x0_tmp = {mask(x[0], 5), Rtmp, 0x34000};
+    return emit(buf, st1b_x0_tmp);
 }

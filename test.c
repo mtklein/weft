@@ -1132,7 +1132,28 @@ static void test_jit_splat() {
     free(weft_compile(b));
 }
 
-int main(void) {
+static void test_jit_memset() {
+    Builder* b = weft_builder();
+    weft_store_8(b,0, weft_splat_8(b, 0x42));
+
+
+    size_t len = 0;
+    void (*fn)(int, void*,void*,void*,void*,void*,void*,void*) = jit(b, &len);
+    if (fn) {
+        uint8_t dst[42] = {0};
+        fn(len(dst), dst,NULL,NULL,NULL,NULL,NULL,NULL);
+        for (int i = 0; i < len(dst); i++) {
+            assert(dst[i] == 0x42);
+        }
+    }
+    drop(fn,len);
+    free(weft_compile(b));
+}
+
+int main(int argc, char** argv) {
+    weft_jit_debug_break = argc > 1;
+    (void)argv;
+
     test_nothing();
     test_nearly_nothing();
     test_just_about_nothing();
@@ -1238,6 +1259,7 @@ int main(void) {
 
     test_jit_loop();
     test_jit_splat();
+    test_jit_memset();
 
     return 0;
 }

@@ -366,16 +366,44 @@ stage(store_64_done) {
 }
 
 void weft_store_8 (Builder* b, int ptr, V8  x) {
-    inst_(b, (BInst){.fn=store_8 , .done=store_8_done , .kind=SIDE_EFFECT, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){
+        .fn   = store_8,
+        .done = store_8_done,
+        .emit = weft_emit_store_8,
+        .kind = SIDE_EFFECT,
+        .x    = x.id,
+        .imm  = ptr
+    });
 }
 void weft_store_16(Builder* b, int ptr, V16 x) {
-    inst_(b, (BInst){.fn=store_16, .done=store_16_done, .kind=SIDE_EFFECT, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){
+        .fn   = store_16,
+        .done = store_16_done,
+        .emit = weft_emit_store_16,
+        .kind = SIDE_EFFECT,
+        .x    = x.id,
+        .imm  = ptr
+    });
 }
 void weft_store_32(Builder* b, int ptr, V32 x) {
-    inst_(b, (BInst){.fn=store_32, .done=store_32_done, .kind=SIDE_EFFECT, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){
+        .fn   = store_32,
+        .done = store_32_done,
+        .emit = weft_emit_store_32,
+        .kind = SIDE_EFFECT,
+        .x    = x.id,
+        .imm  = ptr
+    });
 }
 void weft_store_64(Builder* b, int ptr, V64 x) {
-    inst_(b, (BInst){.fn=store_64, .done=store_64_done, .kind=SIDE_EFFECT, .x=x.id, .imm=ptr});
+    inst_(b, (BInst){
+        .fn   = store_64,
+        .done = store_64_done,
+        .emit = weft_emit_store_64,
+        .kind = SIDE_EFFECT,
+        .x    = x.id,
+        .imm  = ptr
+    });
 }
 
 stage(assert_8)  { int8_t  *x=v(x); (void)x; each assert(x[i]); next(R); }
@@ -627,6 +655,18 @@ static bool assign_reg(int reg[32], int frag, int* r) {
     return false;
 }
 
+static int must_find_frag(const int reg[32], int frag) {
+    for (int i = 0; i < 32; i++) {
+        if (reg[i] == frag) {
+            return i;
+        }
+    }
+    assert(false);
+    return -1;
+}
+
+bool weft_jit_debug_break = false;
+
 size_t weft_jit(const Builder* b, void* vbuf) {
     char scratch[64];
     size_t len = 0;
@@ -634,9 +674,9 @@ size_t weft_jit(const Builder* b, void* vbuf) {
     int reg[32] = {0};
     weft_init_regs(reg);
 
-    if ((0)) {
+    {
         char* buf = vbuf ? vbuf : scratch;
-        char* next = weft_emit_breakpoint(buf);
+        char* next = weft_emit_setup(buf);
         if (!next) {
             return 0;
         }
@@ -658,14 +698,33 @@ size_t weft_jit(const Builder* b, void* vbuf) {
         //    V64: 4 fragments in 4 registers
 
         // Find registers to hold inst's value.  TODO: spill to stack instead of failing.
-        int d[4];
+        int d[4],x[4],y[4],z[4];
         if (inst.slots >= 1 && !assign_reg(reg, 4*id+0, d+0)) { return 0; }
         if (inst.slots >= 4 && !assign_reg(reg, 4*id+1, d+1)) { return 0; }
         if (inst.slots >= 8 && !assign_reg(reg, 4*id+2, d+2)) { return 0; }
         if (inst.slots >= 8 && !assign_reg(reg, 4*id+3, d+3)) { return 0; }
 
+        if (inst.x) {
+            if (b->inst[inst.x-1].slots >= 1) { x[0] = must_find_frag(reg, 4*inst.x+0); }
+            if (b->inst[inst.x-1].slots >= 4) { x[1] = must_find_frag(reg, 4*inst.x+1); }
+            if (b->inst[inst.x-1].slots >= 8) { x[2] = must_find_frag(reg, 4*inst.x+2); }
+            if (b->inst[inst.x-1].slots >= 8) { x[3] = must_find_frag(reg, 4*inst.x+3); }
+        }
+        if (inst.y) {
+            if (b->inst[inst.y-1].slots >= 1) { y[0] = must_find_frag(reg, 4*inst.y+0); }
+            if (b->inst[inst.y-1].slots >= 4) { y[1] = must_find_frag(reg, 4*inst.y+1); }
+            if (b->inst[inst.y-1].slots >= 8) { y[2] = must_find_frag(reg, 4*inst.y+2); }
+            if (b->inst[inst.y-1].slots >= 8) { y[3] = must_find_frag(reg, 4*inst.y+3); }
+        }
+        if (inst.z) {
+            if (b->inst[inst.z-1].slots >= 1) { z[0] = must_find_frag(reg, 4*inst.z+0); }
+            if (b->inst[inst.z-1].slots >= 4) { z[1] = must_find_frag(reg, 4*inst.z+1); }
+            if (b->inst[inst.z-1].slots >= 8) { z[2] = must_find_frag(reg, 4*inst.z+2); }
+            if (b->inst[inst.z-1].slots >= 8) { z[3] = must_find_frag(reg, 4*inst.z+3); }
+        }
+
         char* buf = vbuf ? vbuf : scratch;
-        char* next = inst.emit(buf, d,NULL,NULL,NULL, inst.imm);
+        char* next = inst.emit(buf, d,x,y,z, inst.imm);
         if (!next) {
             return 0;
         }
@@ -687,7 +746,7 @@ size_t weft_jit(const Builder* b, void* vbuf) {
 }
 
 __attribute__((weak))
-char* weft_emit_breakpoint(char* buf) {
+char* weft_emit_setup(char* buf) {
     return buf;
 }
 
