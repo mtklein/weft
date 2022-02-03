@@ -3,7 +3,7 @@ builddir = out
 llvm = /opt/homebrew/opt/llvm
 
 rule compile
-    command = $cc -MD -MF $out.d -std=c11 -g -Werror -c $in -o $out
+    command = $cc -MD -MF $out.d -std=c99 -g -Werror -c $in -o $out
     depfile = $out.d
     deps    = gcc
 
@@ -23,7 +23,9 @@ rule coverage_details
     command = $llvm/bin/llvm-cov show --use-color --show-branches=count --instr-profile $in > $out
 
 clang        = $llvm/bin/clang
-clang_cflags = -fcolor-diagnostics -Weverything -Xclang -nostdsysteminc
+clang_cflags = -fcolor-diagnostics $
+               -Weverything -Wno-declaration-after-statement $
+               -Xclang -nostdsysteminc
 
 opt    = $clang $clang_cflags -O2
 lto    = $clang $clang_cflags -O2 -flto
