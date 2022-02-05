@@ -365,45 +365,19 @@ stage(store_64_done) {
     (void)R;
 }
 
+typedef struct { int id; } V0;
+
 void weft_store_8 (Builder* b, int ptr, V8  x) {
-    inst_(b, (BInst){
-        .fn   = store_8,
-        .done = store_8_done,
-        .emit = weft_emit_store_8,
-        .kind = SIDE_EFFECT,
-        .x    = x.id,
-        .imm  = ptr
-    });
+    (void)inst(b,SIDE_EFFECT,0,store_8 , .done=store_8_done , .x=x.id, .imm=ptr);
 }
 void weft_store_16(Builder* b, int ptr, V16 x) {
-    inst_(b, (BInst){
-        .fn   = store_16,
-        .done = store_16_done,
-        .emit = weft_emit_store_16,
-        .kind = SIDE_EFFECT,
-        .x    = x.id,
-        .imm  = ptr
-    });
+    (void)inst(b,SIDE_EFFECT,0,store_16, .done=store_16_done, .x=x.id, .imm=ptr);
 }
 void weft_store_32(Builder* b, int ptr, V32 x) {
-    inst_(b, (BInst){
-        .fn   = store_32,
-        .done = store_32_done,
-        .emit = weft_emit_store_32,
-        .kind = SIDE_EFFECT,
-        .x    = x.id,
-        .imm  = ptr
-    });
+    (void)inst(b,SIDE_EFFECT,0,store_32, .done=store_32_done, .x=x.id, .imm=ptr);
 }
 void weft_store_64(Builder* b, int ptr, V64 x) {
-    inst_(b, (BInst){
-        .fn   = store_64,
-        .done = store_64_done,
-        .emit = weft_emit_store_64,
-        .kind = SIDE_EFFECT,
-        .x    = x.id,
-        .imm  = ptr
-    });
+    (void)inst(b,SIDE_EFFECT,0,store_64, .done=store_64_done, .x=x.id, .imm=ptr);
 }
 
 stage(assert_8)  { int8_t  *x=v(x); (void)x; each assert(x[i]); next(R); }
