@@ -35,9 +35,9 @@ typedef struct {
     int x,y,z;  // All BInst/Builder value IDs are 1-indexed so 0 can mean unused, N/A, etc.
     enum { MATH, SPLAT, UNIFORM, LOAD, SIDE_EFFECT } kind : 16;
     int slots                                             : 16;
-    void (*fn  )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    void (*done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
-    weft_emit_fn* emit;
+    void  (*fn  )(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
+    void  (*done)(const PInst*, int, unsigned, void*, void*, void* const ptr[]);
+    char* (*jit )(char*, int[], int[], int[], int[], int64_t);
     void*         unused;
 } BInst;
 
@@ -185,8 +185,7 @@ static int inst_(Builder* b, BInst inst) {
     }
     return id;
 }
-#define inst(b,k,bits,f,...) \
-    (V##bits){inst_(b,(BInst){.kind=k, .slots=bits/8, .fn=f, .emit=weft_emit_##f, __VA_ARGS__})}
+#define inst(b,k,bits,f,...) (V##bits){inst_(b,(BInst){.kind=k, .slots=bits/8, .fn=f, __VA_ARGS__})}
 
 void weft_run(const weft_Program* p, int n, void* const ptr[]) {
     void* V = malloc(N * (size_t)p->slots);
@@ -273,16 +272,116 @@ Program* weft_compile(Builder* b) {
     return p;
 }
 
+#if defined(__aarch64__)
+    // x0:    n
+    // x1-x7: ptr0-ptr6
+    // x8:    i
+    // x9:    tmp
+    static const int Ri = 8,
+                   Rtmp = 9;
+
+    #define mask(x,bits)   ((uint32_t)x) & ((1<<bits)-1)
+    #define emit(buf,inst) (memcpy(buf, &inst, sizeof inst), buf+sizeof(inst))
+    static char* emit4(char* buf, uint32_t inst) { return emit(buf, inst); }
+
+    static char* movz(char* buf, int Rd, int64_t imm, int hw) {
+        struct {
+            uint32_t Rd  :  5;
+            uint32_t imm : 16;
+            uint32_t hw  :  2;
+            uint32_t opc :  8;
+            uint32_t sf  :  1;
+        } inst = {mask(Rd,5), mask(imm,16), mask(hw,2), 0xa5, 1};
+        return emit(buf, inst);
+    }
+    static char* movk(char* buf, int Rd, int64_t imm, int hw) {
+        struct {
+            uint32_t Rd  :  5;
+            uint32_t imm : 16;
+            uint32_t hw  :  2;
+            uint32_t opc :  8;
+            uint32_t sf  :  1;
+        } inst = {mask(Rd,5), mask(imm,16), mask(hw,2), 0xe5, 1};
+        return emit(buf, inst);
+    }
+    static char* dup(char* buf, int Rd, int Rn, int imm, int Q) {
+        struct {
+            uint32_t Rd  : 5;
+            uint32_t Rn  : 5;
+            uint32_t lo  : 6;
+            uint32_t imm : 5;
+            uint32_t hi  : 9;
+            uint32_t Q   : 1;
+            uint32_t z   : 1;
+        } inst = {mask(Rd,5), mask(Rn,5), 0x3, mask(imm,5), 0x70, mask(Q,1), 0};
+        return emit(buf, inst);
+    }
+    static char* add(char* buf, int Rd, int Rn, int Rm) {
+        struct {
+            uint32_t Rd  : 5;
+            uint32_t Rn  : 5;
+            uint32_t imm : 6;
+            uint32_t Rm  : 5;
+            uint32_t top : 11;
+        } inst = {mask(Rd,5), mask(Rn,5), 0, mask(Rm,5), 0x458};
+        return emit(buf, inst);
+    }
+#endif
+
 
 stage(splat_8 ) { int8_t  *r=R; each r[i] = (int8_t )inst->imm; next(r+N); }
 stage(splat_16) { int16_t *r=R; each r[i] = (int16_t)inst->imm; next(r+N); }
 stage(splat_32) { int32_t *r=R; each r[i] = (int32_t)inst->imm; next(r+N); }
 stage(splat_64) { int64_t *r=R; each r[i] = (int64_t)inst->imm; next(r+N); }
 
-V8  weft_splat_8 (Builder* b, int8_t  bits) { return inst(b, SPLAT,8 ,splat_8 , .imm=bits); }
-V16 weft_splat_16(Builder* b, int16_t bits) { return inst(b, SPLAT,16,splat_16, .imm=bits); }
-V32 weft_splat_32(Builder* b, int32_t bits) { return inst(b, SPLAT,32,splat_32, .imm=bits); }
-V64 weft_splat_64(Builder* b, int64_t bits) { return inst(b, SPLAT,64,splat_64, .imm=bits); }
+#if defined(__aarch64__)
+    static char* jit_splat_8(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+        (void)x; (void)y; (void)z;
+        buf = movz(buf, Rtmp, imm, 0);     // mov tmp, imm
+        return dup(buf, d[0], Rtmp, 1,0);  // dup.8b d[0], tmp
+    }
+    static char* jit_splat_16(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+        (void)x; (void)y; (void)z;
+        buf = movz(buf, Rtmp, imm, 0);     // mov tmp, imm
+        return dup(buf, d[0], Rtmp, 2,1);  // dup.8h d[0],tmp
+    }
+    static char* jit_splat_32(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+        (void)x; (void)y; (void)z;
+        buf = movz(buf, Rtmp, imm>> 0, 0);  // mov  tmp, imm15:0
+        buf = movk(buf, Rtmp, imm>>16, 1);  // movk tmp, imm31:16
+        buf =  dup(buf, d[0], Rtmp, 4, 1);  // dup.4s d[0], tmp
+        return dup(buf, d[1], Rtmp, 4, 1);  // dup.4s d[1], tmp
+    }
+    static char* jit_splat_64(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+        (void)x; (void)y; (void)z;
+        buf = movz(buf, Rtmp, imm>> 0, 0);
+        buf = movk(buf, Rtmp, imm>>16, 1);
+        buf = movk(buf, Rtmp, imm>>32, 2);
+        buf = movk(buf, Rtmp, imm>>48, 3);
+        buf =  dup(buf, d[0], Rtmp, 8, 1);
+        buf =  dup(buf, d[1], Rtmp, 8, 1);
+        buf =  dup(buf, d[2], Rtmp, 8, 1);
+        return dup(buf, d[3], Rtmp, 8, 1);
+    }
+#else
+    #define jit_splat_8  NULL
+    #define jit_splat_16 NULL
+    #define jit_splat_32 NULL
+    #define jit_splat_64 NULL
+#endif
+
+V8  weft_splat_8 (Builder* b, int8_t  bits) {
+    return inst(b, SPLAT,8 ,splat_8 , .imm=bits, .jit=jit_splat_8);
+}
+V16 weft_splat_16(Builder* b, int16_t bits) {
+    return inst(b, SPLAT,16,splat_16, .imm=bits, .jit=jit_splat_16);
+}
+V32 weft_splat_32(Builder* b, int32_t bits) {
+    return inst(b, SPLAT,32,splat_32, .imm=bits, .jit=jit_splat_32);
+}
+V64 weft_splat_64(Builder* b, int64_t bits) {
+    return inst(b, SPLAT,64,splat_64, .imm=bits, .jit=jit_splat_64);
+}
 
 stage(uniform_8)  { int8_t  *r=R, u=*(const int8_t* )ptr[inst->imm]; each r[i] = u; next(r+N); }
 stage(uniform_16) { int16_t *r=R, u=*(const int16_t*)ptr[inst->imm]; each r[i] = u; next(r+N); }
@@ -367,8 +466,23 @@ stage(store_64_done) {
 
 typedef struct { int id; } V0;
 
+#if defined(__aarch64__)
+    static char* jit_store_8(char* buf, int d[], int x[], int y[], int z[], int64_t imm) {
+        (void)d; (void)y; (void)z;
+        buf = add(buf, Rtmp, (int)imm+1, Ri);
+        struct {
+            uint32_t Rt  : 5;
+            uint32_t Rn  : 5;
+            uint32_t top : 22;
+        } st1b_x0_tmp = {mask(x[0],5), Rtmp, 0x34000};
+        return emit(buf, st1b_x0_tmp);
+    }
+#else
+    #define jit_store_8 NULL
+#endif
+
 void weft_store_8 (Builder* b, int ptr, V8  x) {
-    (void)inst(b,SIDE_EFFECT,0,store_8 , .done=store_8_done , .x=x.id, .imm=ptr);
+    (void)inst(b,SIDE_EFFECT,0,store_8 , .done=store_8_done , .x=x.id, .imm=ptr, .jit=jit_store_8);
 }
 void weft_store_16(Builder* b, int ptr, V16 x) {
     (void)inst(b,SIDE_EFFECT,0,store_16, .done=store_16_done, .x=x.id, .imm=ptr);
@@ -639,21 +753,53 @@ static int must_find_frag(const int reg[32], int frag) {
     return -1;
 }
 
+extern bool weft_jit_debug_break;
 bool weft_jit_debug_break = false;
+
+#if defined(__aarch64__)
+    static void jit_regs(int reg[32]) {
+        for (int i = 8; i < 16; i++) { reg[i] = -1; }  // v8-v15 are callee saved.
+    }
+    static char* jit_setup(char* buf) {
+        if (weft_jit_debug_break) {
+            buf = emit4(buf, 0xd43e0000);
+        }
+        struct {
+            uint32_t Rd  :  5;
+            uint32_t top : 27;
+        } inst = {Ri, 0x550f81f};  // mov i, xzr
+        return emit(buf, inst);
+    }
+    static char* jit_loop(char* buf, char* top) {
+        buf = emit4(buf, 0x91000508);  // add  i,i,1
+        buf = emit4(buf, 0xf1000400);  // subs n,n,1
+
+        struct {
+            uint32_t cond :  4;
+            uint32_t zero :  1;
+             int32_t span : 19;
+            uint32_t high :  8;
+        } bne_top = {0x1/*ne*/, 0, (int)(top-buf)/4, 0x54};
+        buf = emit(buf, bne_top);
+
+        return emit4(buf, 0xd65f03c0); // ret lr
+    }
+#else
+    static void  jit_regs (int reg[32])            { (void)reg;               }
+    static char* jit_setup(char* buf)              {              return buf; }
+    static char* jit_loop (char* buf, char* label) { (void)label; return buf; }
+#endif
 
 size_t weft_jit(const Builder* b, void* vbuf) {
     char scratch[64];
     size_t len = 0;
 
     int reg[32] = {0};
-    weft_init_regs(reg);
+    jit_regs(reg);
 
     {
         char* buf = vbuf ? vbuf : scratch;
-        char* next = weft_emit_setup(buf);
-        if (!next) {
-            return 0;
-        }
+        char* next = jit_setup(buf);
         len += (size_t)(next - buf);
         vbuf = vbuf ? next : vbuf;
     }
@@ -661,6 +807,9 @@ size_t weft_jit(const Builder* b, void* vbuf) {
     void* const top = vbuf;
     for (int i = 0; i < b->inst_len; i++) {
         const BInst inst = b->inst[i];
+        if (!inst.jit) {
+            return 0;
+        }
 
         // 1-based value IDs throughout, leaving 0 as an empty register, -1 as a reserved register.
         const int id = i+1;
@@ -698,10 +847,7 @@ size_t weft_jit(const Builder* b, void* vbuf) {
         }
 
         char* buf = vbuf ? vbuf : scratch;
-        char* next = inst.emit(buf, d,x,y,z, inst.imm);
-        if (!next) {
-            return 0;
-        }
+        char* next = inst.jit(buf, d,x,y,z, inst.imm);
         len += (size_t)(next - buf);
         vbuf = vbuf ? next : vbuf;
 
@@ -709,79 +855,9 @@ size_t weft_jit(const Builder* b, void* vbuf) {
     }
 
     char* buf = vbuf ? vbuf : scratch;
-    char* next = weft_emit_loop(buf, top);
-    if (!next) {
-        return 0;
-    }
+    char* next = jit_loop(buf, top);
     len += (size_t)(next - buf);
     vbuf = vbuf ? next : vbuf;
 
     return len;
 }
-
-__attribute__((weak))
-char* weft_emit_setup(char* buf) {
-    return buf;
-}
-
-__attribute__((weak))
-void weft_init_regs(int reg[32]) {
-    for (int i = 0; i < 32; i++) { reg[i] = -1; }  // Mark all registers as reserved.
-}
-
-__attribute__((weak))
-char* weft_emit_loop(char* buf, char* label) {
-    (void)buf; (void)label;
-    return NULL;
-}
-
-#define stub(name)                                                                       \
-    __attribute__((weak))                                                                \
-    char* weft_emit_##name(char* buf, int d[], int x[], int y[], int z[], int64_t imm) { \
-        (void)buf; (void)d; (void)x; (void)y; (void)z; (void)imm;                        \
-        return NULL;                                                                     \
-    }
-
-stub(splat_8 ) stub(uniform_8 ) stub(load_8 ) stub(store_8 ) stub(assert_8 )
-stub(splat_16) stub(uniform_16) stub(load_16) stub(store_16) stub(assert_16)
-stub(splat_32) stub(uniform_32) stub(load_32) stub(store_32) stub(assert_32)
-stub(splat_64) stub(uniform_64) stub(load_64) stub(store_64) stub(assert_64)
-
-stub(not_8 ) stub(and_8 ) stub(bic_8 ) stub(or_8 ) stub(xor_8 ) stub(sel_8 )
-stub(not_16) stub(and_16) stub(bic_16) stub(or_16) stub(xor_16) stub(sel_16)
-stub(not_32) stub(and_32) stub(bic_32) stub(or_32) stub(xor_32) stub(sel_32)
-stub(not_64) stub(and_64) stub(bic_64) stub(or_64) stub(xor_64) stub(sel_64)
-
-stub(shli_i8 ) stub(shri_s8 ) stub(shri_u8 ) stub(shlv_i8 ) stub(shrv_s8 ) stub(shrv_u8 )
-stub(shli_i16) stub(shri_s16) stub(shri_u16) stub(shlv_i16) stub(shrv_s16) stub(shrv_u16)
-stub(shli_i32) stub(shri_s32) stub(shri_u32) stub(shlv_i32) stub(shrv_s32) stub(shrv_u32)
-stub(shli_i64) stub(shri_s64) stub(shri_u64) stub(shlv_i64) stub(shrv_s64) stub(shrv_u64)
-
-stub(add_i8 ) stub(sub_i8 ) stub(mul_i8 )
-stub(add_i16) stub(sub_i16) stub(mul_i16)
-stub(add_i32) stub(sub_i32) stub(mul_i32)
-stub(add_i64) stub(sub_i64) stub(mul_i64)
-
-stub(eq_i8 ) stub(lt_s8 ) stub(lt_u8 ) stub(le_s8 ) stub(le_u8 )
-stub(eq_i16) stub(lt_s16) stub(lt_u16) stub(le_s16) stub(le_u16)
-stub(eq_i32) stub(lt_s32) stub(lt_u32) stub(le_s32) stub(le_u32)
-stub(eq_i64) stub(lt_s64) stub(lt_u64) stub(le_s64) stub(le_u64)
-
-stub(cast_f16) stub(cast_s16) stub(ceil_f16) stub(floor_f16) stub(sqrt_f16)
-stub(cast_f32) stub(cast_s32) stub(ceil_f32) stub(floor_f32) stub(sqrt_f32)
-stub(cast_f64) stub(cast_s64) stub(ceil_f64) stub(floor_f64) stub(sqrt_f64)
-
-stub(add_f16) stub(sub_f16) stub(mul_f16) stub(div_f16)
-stub(add_f32) stub(sub_f32) stub(mul_f32) stub(div_f32)
-stub(add_f64) stub(sub_f64) stub(mul_f64) stub(div_f64)
-
-stub(eq_f16) stub(lt_f16) stub(le_f16)
-stub(eq_f32) stub(lt_f32) stub(le_f32)
-stub(eq_f64) stub(lt_f64) stub(le_f64)
-
-stub(narrow_i16) stub(narrow_i32) stub(narrow_i64)
-                 stub(narrow_f32) stub(narrow_f64)
-
-stub(widen_s8) stub(widen_s16) stub(widen_s32)
-stub(widen_u8) stub(widen_u16) stub(widen_u32)
-               stub(widen_f16) stub(widen_f32)
