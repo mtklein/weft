@@ -826,20 +826,20 @@ size_t weft_jit(const Builder* b, void* vbuf) {
         if (inst.x) {
             if (b->inst[inst.x-1].slots >= 1) { x[0] = must_find_frag(reg, 4*inst.x+0); }
             if (b->inst[inst.x-1].slots >= 4) { x[1] = must_find_frag(reg, 4*inst.x+1); }
-            if (b->inst[inst.x-1].slots >= 8) { x[2] = must_find_frag(reg, 4*inst.x+2); }
-            if (b->inst[inst.x-1].slots >= 8) { x[3] = must_find_frag(reg, 4*inst.x+3); }
+            if (b->inst[inst.x-1].slots >= 8) { x[2] = must_find_frag(reg, 4*inst.x+2);
+                                                x[3] = must_find_frag(reg, 4*inst.x+3); }
         }
         if (inst.y) {
             if (b->inst[inst.y-1].slots >= 1) { y[0] = must_find_frag(reg, 4*inst.y+0); }
             if (b->inst[inst.y-1].slots >= 4) { y[1] = must_find_frag(reg, 4*inst.y+1); }
-            if (b->inst[inst.y-1].slots >= 8) { y[2] = must_find_frag(reg, 4*inst.y+2); }
-            if (b->inst[inst.y-1].slots >= 8) { y[3] = must_find_frag(reg, 4*inst.y+3); }
+            if (b->inst[inst.y-1].slots >= 8) { y[2] = must_find_frag(reg, 4*inst.y+2);
+                                                y[3] = must_find_frag(reg, 4*inst.y+3); }
         }
         if (inst.z) {
             if (b->inst[inst.z-1].slots >= 1) { z[0] = must_find_frag(reg, 4*inst.z+0); }
             if (b->inst[inst.z-1].slots >= 4) { z[1] = must_find_frag(reg, 4*inst.z+1); }
-            if (b->inst[inst.z-1].slots >= 8) { z[2] = must_find_frag(reg, 4*inst.z+2); }
-            if (b->inst[inst.z-1].slots >= 8) { z[3] = must_find_frag(reg, 4*inst.z+3); }
+            if (b->inst[inst.z-1].slots >= 8) { z[2] = must_find_frag(reg, 4*inst.z+2);
+                                                z[3] = must_find_frag(reg, 4*inst.z+3); }
         }
 
         char* buf = vbuf ? vbuf : scratch;
