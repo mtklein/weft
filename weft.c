@@ -757,10 +757,9 @@ extern bool weft_jit_debug_break;
 bool weft_jit_debug_break = false;
 
 #if defined(__aarch64__)
-    static void jit_regs(int reg[32]) {
+    static char* jit_setup(char* buf, int reg[32]) {
         for (int i = 8; i < 16; i++) { reg[i] = -1; }  // v8-v15 are callee saved.
-    }
-    static char* jit_setup(char* buf) {
+
         if (weft_jit_debug_break) {
             buf = emit4(buf, 0xd43e0000);
         }
@@ -785,8 +784,7 @@ bool weft_jit_debug_break = false;
         return emit4(buf, 0xd65f03c0); // ret lr
     }
 #else
-    static void  jit_regs (int reg[32])            { (void)reg;               }
-    static char* jit_setup(char* buf)              {              return buf; }
+    static char* jit_setup(char* buf, int reg[32]) { (void)reg;   return buf; }
     static char* jit_loop (char* buf, char* label) { (void)label; return buf; }
 #endif
 
@@ -795,11 +793,9 @@ size_t weft_jit(const Builder* b, void* vbuf) {
     size_t len = 0;
 
     int reg[32] = {0};
-    jit_regs(reg);
-
     {
         char* buf = vbuf ? vbuf : scratch;
-        char* next = jit_setup(buf);
+        char* next = jit_setup(buf, reg);
         len += (size_t)(next - buf);
         vbuf = vbuf ? next : vbuf;
     }
