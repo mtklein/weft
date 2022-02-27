@@ -1,7 +1,7 @@
 #include "weft.h"
-#include "weft_jit.h"
 #undef NDEBUG
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1148,6 +1148,8 @@ static void test_jit_memset() {
     drop(fn,len);
     free(weft_compile(b));
 }
+
+extern bool weft_jit_debug_break;
 
 int main(int argc, char** argv) {
     weft_jit_debug_break = argc > 1;

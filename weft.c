@@ -1,5 +1,4 @@
 #include "weft.h"
-#include "weft_jit.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
