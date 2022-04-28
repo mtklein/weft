@@ -70,7 +70,7 @@ build out/misc/test.o: compile test.c
 build out/misc/test: link out/misc/weft.o out/misc/test.o
     cc = $misc
 build out/misc/test.ok | out/misc/test.profraw: run out/misc/test
-    runtime = env ASAN_OPTIONS=detect_leaks=1 LLVM_PROFILE_FILE=out/misc/test.profraw
+    runtime = env ASAN_OPTIONS=detect_leaks=0 LLVM_PROFILE_FILE=out/misc/test.profraw
 
 build out/misc/test.profdata: coverage_merge   out/misc/test.profraw
 build weft.c.summary:         coverage_summary out/misc/test.profdata out/misc/test weft.c
