@@ -44,6 +44,8 @@ build out/opt/test: link out/opt/weft.o out/opt/test.o
     cc = $opt
 build out/opt/test.ok: run out/opt/test
 
+build out/opt/test.leaks: run out/opt/test
+    runtime = leaks -quiet -readonlyContent -atExit --
 
 build out/lto/weft.o: compile weft.c
     cc = $lto
