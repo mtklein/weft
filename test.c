@@ -24,7 +24,7 @@ static size_t store_16(Builder* b, int ptr, V16 x) { weft_store_16(b, ptr, x); r
 static size_t store_32(Builder* b, int ptr, V32 x) { weft_store_32(b, ptr, x); return 32; }
 static size_t store_64(Builder* b, int ptr, V64 x) { weft_store_64(b, ptr, x); return 64; }
 
-static void test_nothing() {
+static void test_nothing(void) {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
@@ -33,7 +33,7 @@ static void test_nothing() {
     free(p);
 }
 
-static void test_nearly_nothing() {
+static void test_nearly_nothing(void) {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
@@ -43,7 +43,7 @@ static void test_nearly_nothing() {
     free(p);
 }
 
-static void test_just_about_nothing() {
+static void test_just_about_nothing(void) {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
@@ -54,7 +54,7 @@ static void test_just_about_nothing() {
     free(p);
 }
 
-static void test_memset8() {
+static void test_memset8(void) {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
@@ -72,7 +72,7 @@ static void test_memset8() {
 
     free(p);
 }
-static void test_memset16() {
+static void test_memset16(void) {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
@@ -90,7 +90,7 @@ static void test_memset16() {
 
     free(p);
 }
-static void test_memset32() {
+static void test_memset32(void) {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
@@ -108,7 +108,7 @@ static void test_memset32() {
 
     free(p);
 }
-static void test_memset64() {
+static void test_memset64(void) {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
@@ -127,7 +127,7 @@ static void test_memset64() {
     free(p);
 }
 
-static void test_no_tail() {
+static void test_no_tail(void) {
     Program* p = NULL;
     {
         Builder* b = weft_builder();
@@ -1104,7 +1104,7 @@ static void drop(void (*fn)(int, void*,void*,void*,void*,void*,void*,void*), siz
 #endif
 }
 
-static void test_jit_loop() {
+static void test_jit_loop(void) {
     Builder* b = weft_builder();
 
     size_t len = 0;
@@ -1116,7 +1116,7 @@ static void test_jit_loop() {
     free(weft_compile(b));
 }
 
-static void test_jit_splat() {
+static void test_jit_splat(void) {
     Builder* b = weft_builder();
     weft_splat_8 (b, 0x42);
     weft_splat_16(b, 0x4243);
@@ -1132,7 +1132,7 @@ static void test_jit_splat() {
     free(weft_compile(b));
 }
 
-static void test_jit_memset() {
+static void test_jit_memset(void) {
     Builder* b = weft_builder();
     weft_store_8(b,0, weft_splat_8(b, 0x42));
 
